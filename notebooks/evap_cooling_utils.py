@@ -16,6 +16,58 @@ import scipy.special as ss
 from matplotlib import pyplot as plt
 import time
 
+import json
+from pathlib import Path
+from datetime import datetime
+
+
+def save_results_snapshot(results, path, metadata=None):
+    """
+    Serialize an evaporation results dict to JSON.
+
+    Converts mpmath mpf values to float for portability. Safe to call on
+    partial results (e.g. after early halt) — only writes what's present.
+
+    Parameters
+    ----------
+    results : dict
+        Evaporation results dict (possibly partial).
+    path : str or Path
+        Output file path. Parent directory is created if missing.
+    metadata : dict, optional
+        Extra info to embed (halt reason, step count, physical params, etc).
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _to_float(x):
+        # mpmath mpf, numpy scalars, and regular numbers all survive float()
+        try:
+            return float(x)
+        except (TypeError, ValueError):
+            return None
+
+    serializable = {
+        key: [_to_float(v) for v in vals] if isinstance(vals, list) else vals
+        for key, vals in results.items()
+    }
+
+    payload = {
+        'saved_at': datetime.now().isoformat(timespec='seconds'),
+        'metadata': metadata or {},
+        'results': serializable,
+    }
+
+    with open(path, 'w') as f:
+        json.dump(payload, f, indent=2)
+
+
+def load_results_snapshot(path):
+    """Load a snapshot saved by save_results_snapshot. Returns (results, metadata)."""
+    with open(path) as f:
+        payload = json.load(f)
+    return payload['results'], payload['metadata']
+
 
 # ---------------------------------------------------------------------------
 # Physical constants (eV-based units used in quadrupole & oscillator notebooks)
@@ -383,44 +435,27 @@ def run_quantum_evaporation(results, truncated_NE_func, nr_func,
 
 def run_quantum_evaporation(results, truncated_NE_func, nr_func,
                             N0, n_steps, dT, dmu,
-                            sign=+1, alpha_floor=-1e-3, verbose=True):
+                            sign=+1, alpha_floor=-1e-3, verbose=True,
+                            save_path=None, save_on_halt=True,
+                            save_metadata=None):
     """
-    Run the recursive evaporation protocol for a quantum gas (BE or FD).
+    ... [existing docstring] ...
 
-    Halts gracefully if:
-      - the NR solver raises (ZeroDivisionError, ValueError, ArithmeticError),
-        typically because det(J) underflowed or a polylog diverged;
-      - for bosons only, the fugacity approaches unity (alpha = mu/kT -> 0),
-        signaling that the semiclassical polylog model is about to exit its
-        domain of validity (onset of Bose-Einstein condensation);
-      - the solver returns a non-physical value (T <= 0, or mu >= 0 for bosons).
-
-    Parameters
-    ----------
-    results : dict
-        Pre-initialized results dict with initial state and Q schedule.
-    truncated_NE_func : callable(N, T, mu, E, Q) -> (N1, E1)
-    nr_func : callable(T, mu, dT, dmu, N_new, E_new) -> [T_new, mu_new]
-    N0 : float
-    n_steps : int
-        Maximum number of evaporation steps.
-    dT, dmu : float
-        NR perturbation offsets.
-    sign : int
-        +1 for bosons (enables BEC guard), -1 for fermions.
-    alpha_floor : float
-        Bosons: halt when alpha = mu/(kB*T) rises above this negative value.
-        Default -1e-3: a safe margin before g_{1/2}(z) diverges at z -> 1.
-    verbose : bool
-        Print diagnostic on early termination.
-
-    Returns
-    -------
-    int
-        Number of completed steps (< n_steps if halted early).
+    Parameters (added)
+    ------------------
+    save_path : str or Path, optional
+        If given, write a JSON snapshot of `results` to this path when the run
+        ends (early halt or completion). Existing file is overwritten.
+    save_on_halt : bool
+        If True (default), save only on early halt. If False, save always.
+    save_metadata : dict, optional
+        Physical parameters (V, N0, T0, Q schedule params, ...) to embed
+        in the snapshot for later reference.
     """
     T0 = results['T'][0]
     kB = ConstantsSI.kB
+    halt_reason = None
+    halt_step = n_steps  # assume completion unless we break early
 
     for i in range(n_steps):
         Ni  = results['N'][i]
@@ -429,25 +464,21 @@ def run_quantum_evaporation(results, truncated_NE_func, nr_func,
         Ei  = results['E'][i]
         Qi  = results['Q'][i]
 
-        # --- BEC proximity guard (bosons only) -----------------------------
         if sign == +1:
             alpha_i = Mui / (kB * Ti)
             if alpha_i > alpha_floor:
+                halt_reason = (f"BEC proximity: alpha = {float(alpha_i):.3e} "
+                               f"exceeds floor {alpha_floor:.1e}")
+                halt_step = i
                 if verbose:
-                    print(f"  [halt @ step {i}] approaching BEC: "
-                          f"alpha = {float(alpha_i):.3e} "
-                          f"(floor {alpha_floor:.1e})")
-                return i
+                    print(f"  [halt @ step {i}] {halt_reason}")
+                break
 
-        # --- Attempt one full step; commit atomically on success -----------
         try:
             N_new, E_new = truncated_NE_func(Ni, Ti, Mui, Ei, Qi)
             T_mu = nr_func(Ti, Mui, dT, dmu, N_new, E_new)
             T_new, mu_new = T_mu[0], T_mu[1]
 
-            # Physicality / finiteness sanity checks.
-            # Comparisons against NaN return False in both Python and mpmath,
-            # so these guards also catch NaN outputs from a degenerate Jacobian.
             if not (T_new > 0):
                 raise ValueError(f"non-positive or NaN T = {T_new}")
             if sign == +1 and not (mu_new < 0):
@@ -456,12 +487,13 @@ def run_quantum_evaporation(results, truncated_NE_func, nr_func,
                 )
 
         except (ZeroDivisionError, ValueError, ArithmeticError, TypeError) as e:
+            halt_reason = f"{type(e).__name__}: {e}"
+            halt_step = i
             if verbose:
-                print(f"  [halt @ step {i}] NR solver failed: "
-                      f"{type(e).__name__}: {e}")
-            return i
+                print(f"  [halt @ step {i}] NR solver failed: {halt_reason}")
+            break
 
-        # --- All checks passed: commit this step ---------------------------
+        # Commit step.
         results['N'].append(N_new)
         results['Nf'].append(Ni / N0)
         results['E'].append(E_new)
@@ -469,7 +501,23 @@ def run_quantum_evaporation(results, truncated_NE_func, nr_func,
         results['Tf'].append(Ti / T0)
         results['Mu'].append(mu_new)
 
-    return n_steps
+    # --- Save snapshot on exit ---------------------------------------------
+    halted_early = halt_reason is not None
+    if save_path is not None and (halted_early or not save_on_halt):
+        meta = dict(save_metadata or {})
+        meta.update({
+            'sign': sign,
+            'alpha_floor': alpha_floor,
+            'n_steps_requested': n_steps,
+            'n_steps_completed': halt_step,
+            'halted_early': halted_early,
+            'halt_reason': halt_reason,
+        })
+        save_results_snapshot(results, save_path, metadata=meta)
+        if verbose:
+            print(f"  [saved] {halt_step} steps -> {save_path}")
+
+    return halt_step
 
 def run_mb_evaporation(results, mb_n_func, mb_t_func, N0, n_steps):
     """
