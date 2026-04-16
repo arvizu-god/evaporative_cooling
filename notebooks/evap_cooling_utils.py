@@ -342,9 +342,9 @@ def initialize_mb_state(results, N0, T0):
 # ---------------------------------------------------------------------------
 # Evaporation simulation loop
 # ---------------------------------------------------------------------------
+"""
 def run_quantum_evaporation(results, truncated_NE_func, nr_func,
                             N0, n_steps, dT, dmu):
-    """
     Run the recursive evaporation protocol for a quantum gas (BE or FD).
 
     Parameters
@@ -364,7 +364,6 @@ def run_quantum_evaporation(results, truncated_NE_func, nr_func,
         Number of evaporation steps.
     dT, dmu : float
         NR perturbation offsets for temperature and chemical potential.
-    """
     T0 = results['T'][0]
     for i in range(n_steps):
         N_new, E_new = truncated_NE_func(
@@ -380,7 +379,97 @@ def run_quantum_evaporation(results, truncated_NE_func, nr_func,
         results['T'].append(T_mu[0])
         results['Tf'].append(results['T'][i] / T0)
         results['Mu'].append(T_mu[1])
+"""
 
+def run_quantum_evaporation(results, truncated_NE_func, nr_func,
+                            N0, n_steps, dT, dmu,
+                            sign=+1, alpha_floor=-1e-3, verbose=True):
+    """
+    Run the recursive evaporation protocol for a quantum gas (BE or FD).
+
+    Halts gracefully if:
+      - the NR solver raises (ZeroDivisionError, ValueError, ArithmeticError),
+        typically because det(J) underflowed or a polylog diverged;
+      - for bosons only, the fugacity approaches unity (alpha = mu/kT -> 0),
+        signaling that the semiclassical polylog model is about to exit its
+        domain of validity (onset of Bose-Einstein condensation);
+      - the solver returns a non-physical value (T <= 0, or mu >= 0 for bosons).
+
+    Parameters
+    ----------
+    results : dict
+        Pre-initialized results dict with initial state and Q schedule.
+    truncated_NE_func : callable(N, T, mu, E, Q) -> (N1, E1)
+    nr_func : callable(T, mu, dT, dmu, N_new, E_new) -> [T_new, mu_new]
+    N0 : float
+    n_steps : int
+        Maximum number of evaporation steps.
+    dT, dmu : float
+        NR perturbation offsets.
+    sign : int
+        +1 for bosons (enables BEC guard), -1 for fermions.
+    alpha_floor : float
+        Bosons: halt when alpha = mu/(kB*T) rises above this negative value.
+        Default -1e-3: a safe margin before g_{1/2}(z) diverges at z -> 1.
+    verbose : bool
+        Print diagnostic on early termination.
+
+    Returns
+    -------
+    int
+        Number of completed steps (< n_steps if halted early).
+    """
+    T0 = results['T'][0]
+    kB = ConstantsSI.kB
+
+    for i in range(n_steps):
+        Ni  = results['N'][i]
+        Ti  = results['T'][i]
+        Mui = results['Mu'][i]
+        Ei  = results['E'][i]
+        Qi  = results['Q'][i]
+
+        # --- BEC proximity guard (bosons only) -----------------------------
+        if sign == +1:
+            alpha_i = Mui / (kB * Ti)
+            if alpha_i > alpha_floor:
+                if verbose:
+                    print(f"  [halt @ step {i}] approaching BEC: "
+                          f"alpha = {float(alpha_i):.3e} "
+                          f"(floor {alpha_floor:.1e})")
+                return i
+
+        # --- Attempt one full step; commit atomically on success -----------
+        try:
+            N_new, E_new = truncated_NE_func(Ni, Ti, Mui, Ei, Qi)
+            T_mu = nr_func(Ti, Mui, dT, dmu, N_new, E_new)
+            T_new, mu_new = T_mu[0], T_mu[1]
+
+            # Physicality / finiteness sanity checks.
+            # Comparisons against NaN return False in both Python and mpmath,
+            # so these guards also catch NaN outputs from a degenerate Jacobian.
+            if not (T_new > 0):
+                raise ValueError(f"non-positive or NaN T = {T_new}")
+            if sign == +1 and not (mu_new < 0):
+                raise ValueError(
+                    f"mu = {mu_new} >= 0 (crossed BEC boundary or NaN)"
+                )
+
+        except (ZeroDivisionError, ValueError, ArithmeticError, TypeError) as e:
+            if verbose:
+                print(f"  [halt @ step {i}] NR solver failed: "
+                      f"{type(e).__name__}: {e}")
+            return i
+
+        # --- All checks passed: commit this step ---------------------------
+        results['N'].append(N_new)
+        results['Nf'].append(Ni / N0)
+        results['E'].append(E_new)
+        results['T'].append(T_new)
+        results['Tf'].append(Ti / T0)
+        results['Mu'].append(mu_new)
+
+    return n_steps
 
 def run_mb_evaporation(results, mb_n_func, mb_t_func, N0, n_steps):
     """
