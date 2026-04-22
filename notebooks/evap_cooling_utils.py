@@ -164,6 +164,41 @@ def g_bar(s, alpha, sigma, sign):
         return -result
     return result
 
+def g_standard(s, alpha, sign):
+    """
+    Compute the standard (untruncated) polylogarithm g_s^(±)(α).
+ 
+        g_s^(+)(α) = Li_s(  e^α )           [bosons]
+        g_s^(-)(α) = -Li_s(-e^α )           [fermions]
+ 
+    Equivalent to ``g_bar(s, alpha, 0, sign)`` but written as a
+    dedicated helper for post-processing thermodynamic calculations
+    on the *rethermalized* state (no cut-off).  This is the building
+    block of Ω, S, E, etc. in the grand-canonical ensemble.
+ 
+    Parameters
+    ----------
+    s : float
+        Polylogarithm order (e.g. 1/2, 3/2, 5/2).
+    alpha : float or mpf
+        Reduced chemical potential  α = μ / (kB T).
+        For bosons α < 0 (α → 0⁻ at the BE condensation transition).
+        For fermions α can take either sign (α > 0 in the degenerate regime).
+    sign : int
+        +1 for bosons (BE), -1 for fermions (FD).
+ 
+    Returns
+    -------
+    mpf
+        Value of g_s^(±)(α).
+    """
+    alpha = mp.mpf(alpha)
+    z = sign * mp.exp(alpha)
+    result = mp.polylog(s, z)
+    if sign == -1:
+        return -result
+    return result
+
 
 # ---------------------------------------------------------------------------
 # Newton-Raphson solvers
@@ -544,6 +579,53 @@ def run_mb_evaporation(results, mb_n_func, mb_t_func, N0, n_steps):
         results['Nf'].append(results['N'][i] / N0)
         results['Tf'].append(results['T'][i] / T0)
 
+def align_results(results_quantum, results_mb, n_completed):
+    """
+    Pad quantum results with NaN up to full schedule length so all arrays
+    match results_mb for plotting.
+
+    Parameters
+    ----------
+    results_quantum : dict
+        Partial results dict from a halted quantum evaporation run.
+    results_mb : dict
+        Complete MB results dict.
+    n_completed : int
+        Number of completed quantum steps (returned by run_quantum_evaporation).
+
+    Returns
+    -------
+    dict
+        A copy of results_quantum with all lists padded to len(results_mb[key]).
+    """
+    aligned = {}
+    for key, vals in results_quantum.items():
+        if not isinstance(vals, list):
+            aligned[key] = vals
+            continue
+
+        # Q schedule is pre-built at full length — don't pad it
+        if key == 'Q':
+            aligned[key] = vals
+            continue
+
+        # Find target length from MB (MB keys are a subset: N, T, Q, Nf, Tf)
+        # For keys MB doesn't have (E, Mu), use the Q schedule length + 1
+        if key in results_mb:
+            target = len(results_mb[key])
+        else:
+            target = len(results_mb['N'])
+
+        current = len(vals)
+        if current < target:
+            padded = [float(v) for v in vals] + [float('nan')] * (target - current)
+        else:
+            padded = [float(v) for v in vals]
+
+        aligned[key] = padded
+
+    return aligned
+
 
 # ---------------------------------------------------------------------------
 # Plotting utilities
@@ -656,8 +738,8 @@ def plot_individual_panels(results_b, results_f, results_mb, trap_name,
     for col, (label, data, n_pts, color) in enumerate(datasets):
         # Row 0: T vs Q
         axes[0, col].scatter(data['Q'][:n_pts], data['T'][:n_pts], c=color, s=6)
-        axes[0, col].set_xscale('log')
-        axes[0, col].set_yscale('log')
+        #axes[0, col].set_xscale('log')
+        #axes[0, col].set_yscale('log')
         axes[0, col].set_title(f'{label} — {trap_name}: T vs Q', fontsize=11)
         axes[0, col].set_xlabel('Cut-off temperature [K]')
         axes[0, col].set_ylabel('Sample temperature [K]')
