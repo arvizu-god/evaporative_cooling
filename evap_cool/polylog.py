@@ -69,7 +69,7 @@ def g_bar(s, alpha, sigma, sign):
         return -result
     return result
 
-def g_standard(s, alpha, sign):
+def g_full(s, alpha, sign):
     """
     Compute the standard (untruncated) polylogarithm g_s^(±)(α).
  
