@@ -127,3 +127,7 @@ class OscillatorTrap(Trap):
     def describe(self):
         return {**super().describe(),
                 "omega": self.omega, "m": self.m, "hbar": self.hbar}
+    
+    @property
+    def volume_global(self):
+        return 1 / self.omega ** 3

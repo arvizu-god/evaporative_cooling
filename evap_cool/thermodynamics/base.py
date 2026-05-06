@@ -29,6 +29,10 @@ import mpmath as mp
 from evap_cool.recurrences import Recurrence, evaluate_fused
 from evap_cool.solvers import newton_raphson_1var
 from .maxwell_boltzmann import mb_temperature as _mb_temperature_kernel
+from .equilibrium import (
+    equilibrium_state_functions_pure_geometry,
+    equilibrium_thermal_coefficients_pure_geometry,
+)
 
 @dataclass
 class Trap(ABC):
@@ -110,6 +114,65 @@ class Trap(ABC):
         (e.g. for mixed geometries).
         """
         return -self.equilibrium_E(T, mu, sign) / self.s
+    
+    @property
+    def volume_global(self) -> float:
+        """Global volume V_g of the trap, constant through evaporation.
+        Conventions in this package:
+            BoxTrap         V_g = self.V             (literal volume in m³)
+            QuadrupoleTrap  V_g = 1 / A_bar ** 3
+            OscillatorTrap  V_g = 1 / omega ** 3
+        Subclasses must override.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} must define `volume_global`."
+        )
+
+
+    def equilibrium_state_functions(self, N, T, mu, E, sign):
+        """Equilibrium Ω, S, P, H, F, G at the rethermalized point.
+
+        Ω, S, P are computed from polylog formulas; H, F, G are derived
+        algebraically. Pure-geometry generic — mixed traps may override
+        if their identities differ.
+
+        Parameters
+        ----------
+        N, T, mu, E : float
+            Equilibrium state at this step.
+        sign : int
+            +1 bosons, -1 fermions.
+
+        Returns
+        -------
+        dict
+            Keys: Omega, S, P, H, F, G, alpha.
+        """
+        return equilibrium_state_functions_pure_geometry(
+            self.s, N, T, mu, E, self.volume_global, self.kB, sign,
+        )
+
+
+    def equilibrium_thermal_coefficients(self, N, T, mu, sign):
+        """Equilibrium C_V, C_P, κ_T, B_P at (T, μ).
+
+        Pure-geometry generic. Three polylog evaluations.
+
+        Parameters
+        ----------
+        N, T, mu : float
+            Equilibrium state at this step. (E not needed.)
+        sign : int
+            +1 bosons, -1 fermions.
+
+        Returns
+        -------
+        dict
+            Keys: CV, CP, kappa_T, B_P.
+        """
+        return equilibrium_thermal_coefficients_pure_geometry(
+            self.s, N, T, mu, self.volume_global, self.kB, sign,
+        )
 
     # ------------------------------------------------------------------
     # Fused Jacobian for the (T, mu) Newton-Raphson rethermalization

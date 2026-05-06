@@ -124,3 +124,7 @@ class QuadrupoleTrap(Trap):
     def describe(self):
         return {**super().describe(),
                 "A_bar": self.A_bar, "m": self.m, "h": self.h}
+    
+    @property
+    def volume_global(self):
+        return 1 / self.A_bar ** 3

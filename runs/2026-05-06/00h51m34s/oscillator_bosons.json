@@ -12,7 +12,7 @@
   },
   "metadata": {
     "schema_version": 1,
-    "saved_at": "2026-05-04T16:37:49",
+    "saved_at": "2026-05-06T00:54:29",
     "trap": {
       "name": "oscillator",
       "s": 3.0,
@@ -23,10 +23,10 @@
       "hbar": 6.582119568038699e-16
     },
     "outcome": {
-      "n_completed": 9952,
+      "n_completed": 9931,
       "n_steps_requested": 10000,
       "halted_early": true,
-      "halt_reason": "ValueError: mu = 1.7553938473994856e-12 >= 0 (crossed BEC boundary or NaN)"
+      "halt_reason": "ValueError: mu = 6.321168992879865e-13 >= 0 (crossed BEC boundary or NaN)"
     }
   },
   "results": {
