@@ -134,3 +134,7 @@ class BoxTrap(Trap):
     # ------------------------------------------------------------------
     def describe(self):
         return {**super().describe(), "V": self.V, "m": self.m, "h": self.h}
+    
+    @property
+    def volume_global(self):
+        return self.V
