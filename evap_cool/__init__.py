@@ -107,6 +107,11 @@ from .evaporation import (
 )
 
 # ---------------------------------------------------------------------------
+# Two-stage BEC-cliff zoom
+# ---------------------------------------------------------------------------
+from .zoom import run_with_bec_zoom, run_with_fermi_zoom, ZoomOutcome
+
+# ---------------------------------------------------------------------------
 # Persistence (with timestamped session folders)
 # ---------------------------------------------------------------------------
 from .storage import (
@@ -168,6 +173,8 @@ __all__ = [
     "build_cutoff_schedule",
     "initialize_quantum_state", "initialize_mb_state",
     "run_quantum_evaporation", "run_mb_evaporation",
+    # Zoom
+    "run_with_bec_zoom", "run_with_fermi_zoom", "ZoomOutcome",
     # Storage
     "save_run", "load_run", "list_runs", "list_sessions",
     "make_session_dir", "make_run_filename", "SCHEMA_VERSION",

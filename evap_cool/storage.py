@@ -91,6 +91,29 @@ def _serialize_results(results: dict) -> dict:
     return out
 
 
+def _extract_last_state(results: dict) -> dict:
+    """Return the last committed thermodynamic state from a results dict.
+
+    Produces a flat dict with `N_last`, `T_last`, `Mu_last`, `E_last`
+    (a subset of which is present, depending on what the run recorded).
+    A Maxwell-Boltzmann run, which has no `Mu` or `E`, yields just
+    `N_last` and `T_last`.  An empty results dict yields an empty dict.
+
+    Values are best-effort cast to float; entries whose final element
+    cannot be cast are dropped, matching `_to_float`'s contract.
+    """
+    state: dict[str, float] = {}
+    pairs = (("N", "N_last"), ("T", "T_last"),
+             ("Mu", "Mu_last"), ("E", "E_last"))
+    for src_key, out_key in pairs:
+        seq = results.get(src_key)
+        if isinstance(seq, list) and seq:
+            val = _to_float(seq[-1])
+            if val is not None:
+                state[out_key] = val
+    return state
+
+
 # ---------------------------------------------------------------------------
 # Session directories and filename helpers
 # ---------------------------------------------------------------------------
@@ -232,6 +255,16 @@ def save_run(
     extra_metadata : dict, optional
         Free-form extra metadata (notes, git SHA, environment info).
 
+    Notes
+    -----
+    A snapshot of the final committed thermodynamic state is added to
+    `metadata` automatically.  For quantum runs this populates
+    `N_last`, `T_last`, `Mu_last`, `E_last`; Maxwell-Boltzmann runs
+    populate only `N_last` and `T_last` (those are the only keys their
+    results dicts carry).  The values are taken from the last element
+    of each list, so they reflect the last *committed* step even when
+    the run halted early.
+
     Returns
     -------
     Path
@@ -253,6 +286,11 @@ def save_run(
             "halted_early": outcome.halted_early,
             "halt_reason": outcome.halt_reason,
         }
+    # Last committed thermodynamic state — N_last, T_last, Mu_last, E_last.
+    # Only the subset that the run actually recorded is emitted (so MB
+    # runs get just N_last and T_last).  These survive an early halt
+    # because they always pick up the final element of each list.
+    metadata.update(_extract_last_state(results))
     if extra_metadata:
         metadata.update(extra_metadata)
 

@@ -15,7 +15,7 @@ from typing import Optional
 
 import mpmath as mp
 
-from .solvers import newton_raphson_2var_fused
+from .solvers import newton_raphson_2var_fused, newton_raphson_2var_fused_real
 from .thermodynamics.base import Trap
 from .thermodynamics.maxwell_boltzmann import mb_particle_number
 
@@ -109,6 +109,7 @@ def run_quantum_evaporation(
     dmu: float,
     sign: int = +1,
     alpha_floor: float = -1e-3,
+    real_part_on_mpc: bool = False,
     verbose: bool = True,
 ) -> RunOutcome:
     """Run the recursive evaporation protocol for a quantum gas.
@@ -147,6 +148,18 @@ def run_quantum_evaporation(
         Boson-only safety threshold. Loop halts before step `i` if the
         current alpha exceeds this value (i.e. approaches 0 from below).
         Ignored for fermions.
+    real_part_on_mpc : bool
+        If True, take the real part (`mp.re`) of the truncation-step
+        outputs (N, E, Omega) before casting to float. This rescues
+        runs in which `mp.polylog` produces `mpc` values with tiny
+        imaginary residues — typical for fermions deep in the degenerate
+        regime (alpha > 0 → polylog argument crosses below z = -1) —
+        which would otherwise raise `TypeError` and halt the loop.
+        The NR solver itself is already mpc-tolerant via
+        `newton_raphson_2var_fused_real`. Default False keeps the
+        original strict behavior, which is appropriate for the first
+        (coarse) zoom stage; the second (fine) stage of `run_with_fermi_zoom`
+        sets this to True.
     verbose : bool
         If True, print a message when the loop halts early.
 
@@ -189,13 +202,24 @@ def run_quantum_evaporation(
             N_new, E_new, Omega_new = trap.truncated_NEO(
                 Ni, Ti, Mui, Ei, Omegai, Qi, sign,
             )
-            N_new     = float(N_new)
-            E_new     = float(E_new)
-            Omega_new = float(Omega_new)
+
+            # Optionally strip imaginary parts before casting to float.
+            # mpmath's analytic continuation of polylog through the z = -1
+            # branch can introduce small mpc residues for fermions in the
+            # degenerate regime (alpha > 0); float(mpc) raises TypeError
+            # and would otherwise halt the loop unconditionally.
+            if real_part_on_mpc:
+                N_new     = float(mp.re(N_new))
+                E_new     = float(mp.re(E_new))
+                Omega_new = float(mp.re(Omega_new))
+            else:
+                N_new     = float(N_new)
+                E_new     = float(E_new)
+                Omega_new = float(Omega_new)
 
             # 2. Rethermalization NR.
             jac = _make_jacobian(N_new, E_new)
-            T_mu = newton_raphson_2var_fused(jac, Ti, Mui, dT, dmu)
+            T_mu = newton_raphson_2var_fused_real(jac, Ti, Mui, dT, dmu)
             T_new = float(T_mu[0])
             mu_new = float(T_mu[1])
 

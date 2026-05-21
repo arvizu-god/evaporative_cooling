@@ -38,13 +38,21 @@ Thermal coefficients:
     B_P     = (1/T) · r_lo · [(s+1) r_hi - s/r_lo]
     C_P     = C_V + V_g T B_P² / κ_T
 
-These reduce to the per-trap formulas in `Cuadrupolo_2.pdf` and
-`Oscilador.pdf`:
-    s = 3   (oscillator):   r_hi = g_4/g_3,        r_lo = g_2/g_3
-    s = 9/2 (quadrupole):   r_hi = g_{11/2}/g_{9/2}, r_lo = g_{7/2}/g_{9/2}
+These reduce to the per-trap formulas in `Caja_Ideal.pdf`,
+`Oscilador.pdf`, and `Cuadrupolo_2.pdf`:
+    s = 3/2 (box):          r_hi = g_{5/2}/g_{3/2},   r_lo = g_{1/2}/g_{3/2}
+    s = 3   (oscillator):   r_hi = g_4/g_3,           r_lo = g_2/g_3
+    s = 9/2 (quadrupole):   r_hi = g_{11/2}/g_{9/2},  r_lo = g_{7/2}/g_{9/2}
 
-The same generic form will apply to the box (s = 3/2) once the box
-equilibrium derivation in the source notes is completed.
+The box case at s = 3/2 was verified line-by-line against `Caja_Ideal.pdf`:
+the generic Omega, S, P, H, F, G, C_V, kappa_T, B_P, and C_P all reduce
+algebraically to the closed forms derived there.  In particular,
+
+    C_P = C_V + V_g T B_P^2 / kappa_T
+        = (5/2) N kB · (g_{5/2} g_{1/2} / g_{3/2}^2)
+                     · ( (5/2) g_{5/2}/g_{3/2} - (3/2) g_{3/2}/g_{1/2} ),
+
+matching `Caja_Ideal.pdf` eq. (after eq. 12).
 """
 
 from __future__ import annotations

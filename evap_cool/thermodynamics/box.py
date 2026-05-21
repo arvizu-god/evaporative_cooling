@@ -1,15 +1,64 @@
 """3D box trap.
 
-Density of states  g(eps) ~ eps^(1/2),  so  s = 3/2.
-Equilibrium:
-    N    = (V / lambda^3) * g_{3/2}(alpha)
-    E    = (3/2) * N * kB * T * g_{5/2}(alpha) / g_{3/2}(alpha)
+Particles of mass m confined in a volume  V = L_x L_y L_z  with
+U(r) = 0 inside the box.  Density of states  g(eps) ~ eps^(1/2),
+so  s = 3/2.  Reference derivation: `Caja_Ideal.pdf`.
 
-The truncation-step recurrences (one evaporation cut) are inherited from
-the Trap base class via `truncated_NEO`, which consumes the recurrence
-specifications produced by `pure_geometry_recurrences(1.5)` in __init__.
-This file therefore contains only equilibrium thermodynamics and the
-trap-specific Jacobian / MB temperature formulas.
+Equations of state (implemented here)
+-------------------------------------
+With  alpha = mu / (kB T)  and thermal wavelength
+lambda_T = h / sqrt(2 pi m kB T):
+
+    N = (V / lambda_T^3) * g_{3/2}(alpha)
+    E = (3/2) * N * kB * T * g_{5/2}(alpha) / g_{3/2}(alpha)
+
+Equilibrium state functions  (inherited via Trap → equilibrium.py)
+-----------------------------------------------------------------
+With  r_hi = g_{5/2}(alpha) / g_{3/2}(alpha):
+
+    Omega = -N kB T * g_{5/2}(alpha) / g_{3/2}(alpha)
+    P     = (kB T / lambda_T^3) * g_{5/2}(alpha)        [= -Omega / V]
+    S     = N kB * ( (5/2) g_{5/2}(alpha) / g_{3/2}(alpha) - alpha )
+    H     = (5/2) N kB T * g_{5/2}(alpha) / g_{3/2}(alpha)
+    F     = -N kB T * g_{5/2}(alpha) / g_{3/2}(alpha)  +  N kB T * alpha
+    G     = mu * N
+
+Thermal coefficients  (inherited via Trap → equilibrium.py)
+-----------------------------------------------------------
+    C_V    = N kB * ( (15/4) g_{5/2}(alpha)/g_{3/2}(alpha)
+                    - ( 9/4) g_{3/2}(alpha)/g_{1/2}(alpha) )
+    kappa_T = V / (N kB T) * g_{1/2}(alpha) / g_{3/2}(alpha)
+    B_P    = (1/T) * g_{1/2}(alpha)/g_{3/2}(alpha)
+             * ( (5/2) g_{5/2}(alpha)/g_{3/2}(alpha)
+               - (3/2) g_{3/2}(alpha)/g_{1/2}(alpha) )
+    C_P    = C_V  +  V T B_P^2 / kappa_T
+           = (5/2) N kB * ( g_{5/2}(alpha) g_{1/2}(alpha) / g_{3/2}(alpha)^2 )
+                       * ( (5/2) g_{5/2}(alpha)/g_{3/2}(alpha)
+                         - (3/2) g_{3/2}(alpha)/g_{1/2}(alpha) )
+
+These are *not* re-implemented here: they follow from the pure-geometry
+generic formulas in `evap_cool.thermodynamics.equilibrium` with
+s = 3/2, V_g = self.V, evaluated at the rethermalized (T, mu).  The
+algebraic reduction of those formulas at s = 3/2 reproduces the closed
+forms above (and matches `Caja_Ideal.pdf` line-by-line).
+
+Implementation map
+------------------
+    N, E                          → `equilibrium_N`, `equilibrium_E`  (this file)
+    Omega, S, P, H, F, G          → `Trap.equilibrium_state_functions`
+                                    → `equilibrium_state_functions_pure_geometry(s=1.5, V_g=V)`
+    C_V, C_P, kappa_T, B_P        → `Trap.equilibrium_thermal_coefficients`
+                                    → `equilibrium_thermal_coefficients_pure_geometry(s=1.5, V_g=V)`
+    Global volume V_g             → `BoxTrap.volume_global = V`
+    Truncation-step recurrences   → `pure_geometry_recurrences(1.5)`
+                                    consumed by `Trap.truncated_NEO`
+    MB-limit post-cut temperature → `Trap.mb_temperature`
+                                    via `maxwell_boltzmann.mb_temperature(s=1.5, ...)`
+
+This file therefore contains only:
+  - the trap-specific equations of state  N(T, mu), E(T, mu),
+  - the fused Jacobian used by the (T, mu) Newton-Raphson rethermalizer,
+  - helpers (thermal_wavelength, _prefactor_N) and storage hooks.
 """
 
 from dataclasses import dataclass
