@@ -90,6 +90,8 @@ from .thermodynamics import (
     OscillatorTrap,
     mb_particle_number,
     mb_temperature,
+    mb_state_functions_pure_geometry,
+    mb_thermal_coefficients_pure_geometry,
 )
 
 # ---------------------------------------------------------------------------
@@ -132,6 +134,8 @@ from .post_processing import (
     save_thermodynamics,
     load_thermodynamics,
     process_and_save_run,
+    compute_mb_run_thermodynamics,
+    process_and_save_mb_run,
     THERMO_SCHEMA_VERSION,
 )
 
@@ -146,6 +150,7 @@ from .plots import (
     align_results,
     PLOT_COLORS,
     PLOT_LABELS,
+    plot_dimensionless_overview
 )
 
 
@@ -167,6 +172,8 @@ __all__ = [
     # Traps
     "Trap", "BoxTrap", "QuadrupoleTrap", "OscillatorTrap",
     "mb_particle_number", "mb_temperature",
+    "mb_state_functions_pure_geometry",
+    "mb_thermal_coefficients_pure_geometry",
     # Evaporation
     "RunOutcome",
     "create_result_dict", "create_mb_result_dict",
@@ -174,17 +181,18 @@ __all__ = [
     "initialize_quantum_state", "initialize_mb_state",
     "run_quantum_evaporation", "run_mb_evaporation",
     # Zoom
-    "run_with_bec_zoom", "run_with_fermi_zoom", "ZoomOutcome",
+    "run_with_bec_zoom", "run_with_fermi_zoom" ,"ZoomOutcome",
     # Storage
     "save_run", "load_run", "list_runs", "list_sessions",
     "make_session_dir", "make_run_filename", "SCHEMA_VERSION",
     # Post-processing
     "compute_run_thermodynamics", "save_thermodynamics",
     "load_thermodynamics", "process_and_save_run",
+    "compute_mb_run_thermodynamics", "process_and_save_mb_run",
     "THERMO_SCHEMA_VERSION",
     # Plots
     "plot_combined_overview", "plot_individual_panels",
     "plot_state_functions", "plot_thermal_coefficients",
     "align_results",
-    "PLOT_COLORS", "PLOT_LABELS",
+    "PLOT_COLORS", "PLOT_LABELS", "plot_dimensionless_overview",
 ]

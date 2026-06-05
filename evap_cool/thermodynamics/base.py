@@ -28,7 +28,11 @@ import mpmath as mp
 
 from evap_cool.recurrences import Recurrence, evaluate_fused
 from evap_cool.solvers import newton_raphson_1var
-from .maxwell_boltzmann import mb_temperature as _mb_temperature_kernel
+from .maxwell_boltzmann import (
+    mb_temperature as _mb_temperature_kernel,
+    mb_state_functions_pure_geometry,
+    mb_thermal_coefficients_pure_geometry,
+)
 from .equilibrium import (
     equilibrium_state_functions_pure_geometry,
     equilibrium_thermal_coefficients_pure_geometry,
@@ -206,6 +210,56 @@ class Trap(ABC):
         """MB-limit post-cut temperature. Default implementation handles all
         pure-geometry traps; mixed traps may override."""
         return _mb_temperature_kernel(self.s, Q, T)
+
+    # ------------------------------------------------------------------
+    # Maxwell-Boltzmann equilibrium thermodynamics
+    #
+    # In the MB limit µ and E are slaved to (N, T) via the trap's A(T)
+    # prefactor:  N = A(T) e^α  ⇒  α = ln(N / A(T)).  Every subclass
+    # already implements A(T) as `_prefactor_N(T)` (the coefficient of
+    # g_s(α) in equilibrium_N), so `mb_alpha` is generic; the two
+    # wrappers below thread the result through the maxwell_boltzmann
+    # kernels. No per-trap MB code is needed.
+    # ------------------------------------------------------------------
+    def mb_alpha(self, N, T):
+        """MB reduced chemical potential α = µ/(kB T) = ln(N / A(T)).
+
+        A(T) is the trap-specific prefactor of e^α in N (see Sec. 5 of
+        the MB limit notes). It is exposed by every subclass as
+        `_prefactor_N(T)`.
+        """
+        return mp.log(mp.mpf(N) / self._prefactor_N(T))
+
+    def mb_state_functions(self, N, T):
+        """MB equilibrium Ω, S, P, H, F, G (+ derived µ, E) at (N, T).
+
+        Statistics-independent (no `sign` argument). µ and E are
+        returned because they are determined by (N, T) in the MB limit,
+        unlike the quantum case where they are stored inputs.
+
+        Returns
+        -------
+        dict
+            Keys: Omega, S, P, H, F, G, alpha, Mu, E.
+        """
+        alpha = self.mb_alpha(N, T)
+        return mb_state_functions_pure_geometry(
+            self.s, N, T, alpha, self.volume_global, self.kB,
+        )
+
+    def mb_thermal_coefficients(self, N, T):
+        """MB equilibrium C_V, C_P, κ_T, B_P at (N, T).
+
+        Closed form — no polylogs. Statistics-independent.
+
+        Returns
+        -------
+        dict
+            Keys: CV, CP, kappa_T, B_P.
+        """
+        return mb_thermal_coefficients_pure_geometry(
+            self.s, N, T, self.volume_global, self.kB,
+        )
 
     # ------------------------------------------------------------------
     # Initial-condition helper:  given (N0, T0, sign), find alpha_0

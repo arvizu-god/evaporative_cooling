@@ -32,7 +32,7 @@ from .base import Trap
 from .box import BoxTrap
 from .quadrupole import QuadrupoleTrap
 from .oscillator import OscillatorTrap
-from .maxwell_boltzmann import mb_particle_number, mb_temperature
+from .maxwell_boltzmann import mb_particle_number, mb_temperature, mb_state_functions_pure_geometry, mb_thermal_coefficients_pure_geometry
 
 __all__ = [
     "Trap",
