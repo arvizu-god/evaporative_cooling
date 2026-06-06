@@ -32,6 +32,7 @@ from .base import Trap
 from .box import BoxTrap
 from .quadrupole import QuadrupoleTrap
 from .oscillator import OscillatorTrap
+from .mixed import OscBoxTrap, BoxOscTrap          # <-- add
 from .maxwell_boltzmann import mb_particle_number, mb_temperature, mb_state_functions_pure_geometry, mb_thermal_coefficients_pure_geometry
 
 __all__ = [
@@ -39,6 +40,7 @@ __all__ = [
     "BoxTrap",
     "QuadrupoleTrap",
     "OscillatorTrap",
+    "OscBoxTrap", "BoxOscTrap",                     # <-- add
     "mb_particle_number",
     "mb_temperature",
 ]

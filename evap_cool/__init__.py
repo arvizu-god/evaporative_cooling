@@ -88,6 +88,7 @@ from .thermodynamics import (
     BoxTrap,
     QuadrupoleTrap,
     OscillatorTrap,
+    OscBoxTrap, BoxOscTrap,   
     mb_particle_number,
     mb_temperature,
     mb_state_functions_pure_geometry,
@@ -138,7 +139,7 @@ from .post_processing import (
     process_and_save_mb_run,
     THERMO_SCHEMA_VERSION,
 )
-
+ 
 # ---------------------------------------------------------------------------
 # Plotting
 # ---------------------------------------------------------------------------
@@ -150,7 +151,34 @@ from .plots import (
     align_results,
     PLOT_COLORS,
     PLOT_LABELS,
-    plot_dimensionless_overview
+)
+ 
+# ---------------------------------------------------------------------------
+# Normalization (self-normalized runs -> sibling *_norm.json)
+# ---------------------------------------------------------------------------
+from .normalization import (
+    compute_normalized_run,
+    save_normalized,
+    load_normalized,
+    process_and_save_normalized,
+    normalize_session,
+    NORM_SCHEMA_VERSION,
+)
+ 
+# ---------------------------------------------------------------------------
+# Dimensionless (normalized) multi-trap plotting
+# ---------------------------------------------------------------------------
+from .plots_dimensionless import (
+    plot_dimensionless_overview,
+    plot_cp_minus_cv,
+    plot_energies_per_particle,
+    plot_compressibility,
+    plot_heat_capacities,
+    plot_n_vs_t,
+    build_normalized_traps,
+    TRAP_COLORS,
+    STAT_MARKERS,
+    STAT_LINESTYLES,
 )
 
 
@@ -171,6 +199,7 @@ __all__ = [
     "evaluate_recurrence", "evaluate_fused",
     # Traps
     "Trap", "BoxTrap", "QuadrupoleTrap", "OscillatorTrap",
+    "OscBoxTrap", "BoxOscTrap", 
     "mb_particle_number", "mb_temperature",
     "mb_state_functions_pure_geometry",
     "mb_thermal_coefficients_pure_geometry",
@@ -194,5 +223,14 @@ __all__ = [
     "plot_combined_overview", "plot_individual_panels",
     "plot_state_functions", "plot_thermal_coefficients",
     "align_results",
-    "PLOT_COLORS", "PLOT_LABELS", "plot_dimensionless_overview",
+    "PLOT_COLORS", "PLOT_LABELS",
+    # Normalization
+    "compute_normalized_run", "save_normalized", "load_normalized",
+    "process_and_save_normalized", "normalize_session",
+    "NORM_SCHEMA_VERSION",
+    # Dimensionless (normalized) plotting
+    "plot_dimensionless_overview", "plot_cp_minus_cv",
+    "plot_energies_per_particle", "plot_compressibility",
+    "plot_heat_capacities", "plot_n_vs_t",
+    "build_normalized_traps", "TRAP_COLORS", "STAT_MARKERS", "STAT_LINESTYLES",
 ]

@@ -82,3 +82,51 @@ class HarmonicParameters:
     N_STEPS = 20000
     dT_nr = 1e-20
     dmu_nr = 1e-30
+
+class Osc2DBox1DParameters:
+    """2D harmonic oscillator + 1D box parameters (nu = 5/2). SI units."""
+    h  = ConstantsSI.h
+    hb = ConstantsSI.hbar
+    kB = ConstantsSI.kB
+    m  = ConstantsSI.m_Na23
+
+    # Trap geometry
+    omega_x = 2 * np.pi * 100
+    omega_y = 2 * np.pi * 100
+    L       = 1e-4              # box length along z [m] (100 um)
+    V_g     = (100e-6) ** 3     # literal global volume [m^3] = (100 um)^3
+
+    # Initial thermodynamic state
+    N = 1e-7
+    T = 5e-5
+
+    # Initial cut-off
+    Q = 5e-4
+    dQ = 5e-8
+    N_STEPS = 20000
+    dT_nr = 1e-20
+    dmu_nr = 1e-30
+
+
+class Box2DOsc1DParameters:
+    """1D harmonic oscillator + 2D box parameters (nu = 2). SI units."""
+    h  = ConstantsSI.h
+    hb = ConstantsSI.hbar
+    kB = ConstantsSI.kB
+    m  = ConstantsSI.m_Na23
+
+    # Trap geometry
+    omega_z = 2 * np.pi * 100
+    Sigma   = 1e-8              # box surface area [m^2] = (100 um)^2
+    V_g     = (100e-6) ** 3     # literal global volume [m^3] = (100 um)^3
+
+    # Initial thermodynamic state
+    N = 1e-7
+    T = 5e-5
+
+    # Initial cut-off
+    Q = 5e-4
+    dQ = 5e-8
+    N_STEPS = 20000
+    dT_nr = 1e-20
+    dmu_nr = 1e-30
