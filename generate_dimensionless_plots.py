@@ -11,16 +11,15 @@ the ``*_norm.json`` files, builds the normalized trap structure, and saves
 all figures into ``figures/``:
 
     fig1_energies_per_particle.png
-    fig2_compressibility.png
-    fig3_heat_capacities.png
+    fig2_compressibility.png        <- plain or BE/FD-shaded per TEXTURES
+    fig3_heat_capacities.png        <- plain or BE/FD-shaded per TEXTURES
     fig4_N_vs_T.png
     dimensionless_overview.png
     cp_minus_cv.png
-    fig2_new_compressibility.png    <- BE/FD region-shaded variant (new)
-    fig3_new_heat_capacities.png    <- BE/FD region-shaded variant (new)
 
-Adjust the CONFIG block below to change scales, the session, or the output
-folder. No arguments are parsed; edit the constants and rerun.
+Adjust the CONFIG block below to change scales, appearance (LABELING /
+TEXTURES / GRID), the session, or the output folder. No arguments are
+parsed; edit the constants and rerun.
 """
 
 from __future__ import annotations
@@ -66,6 +65,19 @@ SESSION_INDEX = None
 # "symlog", "asinh", "logit", ...).
 XSCALE = "log"
 YSCALE = "log"
+
+# Dimensionless-figure appearance toggles (apply to fig1-fig4).
+#   LABELING : "old" -> per-panel "Statistic" box + bottom "Trap" legend;
+#              "new" -> single combined Trap x Statistic block. Both box-less.
+#   TEXTURES : "yes" -> draw the BE/FD region stipple (dots/triangles) on the
+#              compressibility & heat-capacity figures; "no" -> plain curves.
+#              (No effect on the energies and N-vs-T figures, which have no
+#              regions.)
+#   GRID     : True -> background grid behind the curves; False -> no grid.
+#              The y=1 / x=1 reference lines are drawn regardless.
+LABELING = "old"     # "old" | "new"
+TEXTURES = "no"      # "yes" | "no"
+GRID     = False     # True  | False
 
 # Overview / Cp-Cv knobs (these were referenced but never set in the notebook).
 YLIM_PCT  = 99.0
@@ -133,7 +145,7 @@ def main() -> None:
               ", ".join(k for k in res if res[k] is not None))
         print("first value (should be 1.0 where defined):")
         for k in ("T", "N", "Omega", "kappa_T", "B_P",
-                  "Omega_over_N", "CV_over_N", "CP_minus_CV_over_N"):
+                  "Omega_over_N", "S_over_N", "CV_over_N", "CP_minus_CV_over_N"):
             v = res.get(k)
             if v:
                 print(f"  {k:>20}: {v[0]}")
@@ -156,17 +168,31 @@ def main() -> None:
 
     print("\nRendering figures:")
 
-    save(plot_energies_per_particle(traps, xscale=XSCALE, yscale=YSCALE),
+    use_regions = TEXTURES.lower() == "yes"
+
+    save(plot_energies_per_particle(traps, xscale=XSCALE, yscale=YSCALE,
+                                    labeling=LABELING, grid=GRID),
          "fig1_energies_per_particle.png", dpi=DPI_ENERGIES)
 
-    save(plot_compressibility(traps, xscale=XSCALE, yscale=YSCALE,
-                              divide_be_fd=True),
-         "fig2_compressibility.png")
+    # fig2 / fig3: TEXTURES picks the region-shaded variant vs the plain one.
+    if use_regions:
+        save(plot_compressibility_regions(traps, xscale=XSCALE, yscale=YSCALE,
+                                          labeling=LABELING, grid=GRID),
+             "fig2_compressibility.png")
+        save(plot_heat_capacities_regions(traps, xscale=XSCALE, yscale=YSCALE,
+                                          labeling=LABELING, grid=GRID),
+             "fig3_heat_capacities.png")
+    else:
+        save(plot_compressibility(traps, xscale=XSCALE, yscale=YSCALE,
+                                  divide_be_fd=True,
+                                  labeling=LABELING, grid=GRID),
+             "fig2_compressibility.png")
+        save(plot_heat_capacities(traps, xscale=XSCALE, yscale=YSCALE,
+                                  labeling=LABELING, grid=GRID),
+             "fig3_heat_capacities.png")
 
-    save(plot_heat_capacities(traps, xscale=XSCALE, yscale=YSCALE),
-         "fig3_heat_capacities.png")
-
-    save(plot_n_vs_t(traps, xscale=XSCALE, yscale="linear"),
+    save(plot_n_vs_t(traps, xscale=XSCALE, yscale="linear",
+                     labeling=LABELING, grid=GRID),
          "fig4_N_vs_T.png")
 
     save(plot_dimensionless_overview(traps, xscale=XSCALE, yscale=YSCALE,
@@ -177,13 +203,6 @@ def main() -> None:
     save(plot_cp_minus_cv(traps, xscale=XSCALE, yscale=YSCALE,
                           ylim_pct=YLIM_PCT, trim_tail=TRIM_TAIL, stride=STRIDE),
          "cp_minus_cv.png")
-
-    # --- New BE/FD region-shaded variants --------------------------------
-    save(plot_compressibility_regions(traps, xscale=XSCALE, yscale=YSCALE),
-         "fig2_new_compressibility.png")
-
-    save(plot_heat_capacities_regions(traps, xscale=XSCALE, yscale=YSCALE),
-         "fig3_new_heat_capacities.png")
 
     print(f"\nDone. Figures in {FIG_DIR.resolve()}")
 

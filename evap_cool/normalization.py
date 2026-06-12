@@ -93,7 +93,7 @@ _DERIVED_KEY = "CP_minus_CV"
 # normalized N, elementwise: X_hat_i / N_hat_i = (X / N)_i / (X / N)_0.
 # This is dimensionless, starts at 1, and is the per-particle quantity relative
 # to its initial per-particle value. Stored under "<base>_over_N".
-_PER_PARTICLE_BASES = ("Omega", "F", "G", "CV", "CP", "CP_minus_CV")
+_PER_PARTICLE_BASES = ("Omega", "S", "F", "G", "CV", "CP", "CP_minus_CV")
 _PER_PARTICLE_KEYS = tuple(f"{b}_over_N" for b in _PER_PARTICLE_BASES)
 
 

@@ -66,11 +66,11 @@ from .normalization import load_normalized
 # Okabe-Ito palette. The three statistics of a trap are shades of this base
 # (see _stat_color): base for MB, lighter for BE, darker for FD.
 TRAP_COLORS = {
-    "box":         "#E69F00",   # orange (peach)
-    "quadrupole":  "#009E73",   # bluish green
-    "oscillator":  "#0072B2",   # blue (navy)
-    "box2d_osc1d": "#D55E00",   # vermilion   (the "Box2d" potential)
-    "osc2d_box1d": "#CC79A7",   # reddish purple (the "Box1d" potential)
+    "box":       "#1B3A4B",   
+    "quadrupole":"#A0372A",   # bluish green
+    "oscillator": "#C46D3B",   # blue (navy)
+    "box2d_osc1d": "#4FA8B8",   # vermilion   (the "Box2d" potential)
+    "osc2d_box1d": "#E8A87C",   # reddish purple (the "Box1d" potential)
 }
 _FALLBACK_COLOR = "#9e9e9e"
 
@@ -167,6 +167,34 @@ def _trap_color(key: str):
     if "box" in key:
         return TRAP_COLORS["box"]
     return _FALLBACK_COLOR
+
+# Canonical order (descending C_trap) + labels for the four main split figures.
+_MAIN_TRAP_ORDER = ["box", "box2d_osc1d", "osc2d_box1d", "oscillator", "quadrupole"]
+_MAIN_TRAP_LABELS = {
+    "box":         "Box",
+    "box2d_osc1d": "2D Box + 1D harmonic",
+    "osc2d_box1d": "2D Harmonic + 1D Box",
+    "oscillator":  "Harmonic",
+    "quadrupole":  "Quadrupolar",
+}
+
+
+def _ordered_relabeled(traps: Sequence[dict]) -> list:
+    """Reorder `traps` to _MAIN_TRAP_ORDER and relabel per _MAIN_TRAP_LABELS.
+
+    Returns shallow copies with only 'name' overridden (keys/data untouched, so
+    colours stay pinned). Unknown keys keep their order and land after the
+    known ones. Does not mutate the caller's list or dicts.
+    """
+    rank = {k: i for i, k in enumerate(_MAIN_TRAP_ORDER)}
+    out = []
+    for t in sorted(traps, key=lambda t: rank.get(_trap_key(t), len(rank))):
+        t2 = dict(t)
+        lbl = _MAIN_TRAP_LABELS.get(_trap_key(t))
+        if lbl:
+            t2["name"] = lbl
+        out.append(t2)
+    return out
 
 
 def _trap_display(tdict: dict) -> str:
@@ -551,9 +579,36 @@ def _trap_figlegend(fig, traps: Sequence[dict], *, y: float = 0.0):
     if th:
         fig.legend(
             handles=th, loc="lower center", bbox_to_anchor=(0.5, y),
-            ncol=min(len(th), 5), fontsize=10,
-            title="Trap (potential)", title_fontsize=10, frameon=True,
+            ncol=min(len(th), 5), fontsize=10, frameon=False,
         )
+
+
+# ---------------------------------------------------------------------------
+# Labeling: 'old' (two separate, frameless legends) vs 'new' (combined block).
+# Both modes are box-less. `_draw_bottom_legend` is the final layout step of
+# every line figure; it both places the bottom legend and runs tight_layout.
+# ---------------------------------------------------------------------------
+def _resolve_labeling(labeling: Optional[str]) -> str:
+    l = (labeling or "old").lower()
+    if l not in ("old", "new"):
+        raise ValueError(f"labeling must be 'old' or 'new', got {labeling!r}")
+    return l
+
+
+def _draw_bottom_legend(fig, traps: Sequence[dict], *, labeling: str,
+                        top: float = 0.97):
+    """Place the bottom legend per `labeling` and apply ``tight_layout``.
+
+    ``'old'`` -> frameless bottom "Trap (potential)" legend (the per-panel
+    "Statistic" boxes are drawn inside `_line_panel`). ``'new'`` -> the
+    frameless combined Trap x Statistic block. Must be the last layout call.
+    """
+    if labeling == "new":
+        fig.tight_layout(rect=[0, _LEGEND_RECT_BOTTOM, 1, top])
+        _combined_legend(fig, traps)
+    else:
+        _trap_figlegend(fig, traps)
+        fig.tight_layout(rect=[0, 0.08, 1, top])
 
 
 def _line_panel(
@@ -561,10 +616,13 @@ def _line_panel(
     abs_value: bool, xscale: str, yscale: str,
     reference_lines: bool, lw: float,
     stat_legend: bool, stat_legend_loc: str,
+    grid: bool = True,
 ):
     """Line plot of one quantity for every (trap, statistic) on `ax`.
 
-    Trap -> colour, statistic -> line style + shade. No markers.
+    Trap -> colour, statistic -> line style + shade. No markers. `grid`
+    toggles the background grid (the ``y=1`` / ``x=1`` reference lines are
+    drawn independently via `reference_lines`).
     """
     for tdict in traps:
         base = _trap_color(_trap_key(tdict))
@@ -595,7 +653,8 @@ def _line_panel(
     ax.set_xlabel(_XLABEL, fontsize=11)
     ax.set_ylabel(title, fontsize=11)
     ax.set_title(title, fontsize=12)
-    ax.grid(True, which="both", alpha=0.15)
+    if grid:
+        ax.grid(True, which="both", alpha=0.15)
     ax.tick_params(axis="both", labelsize=9)
 
     if stat_legend:
@@ -603,7 +662,7 @@ def _line_panel(
         if sh:
             ax.legend(
                 handles=sh, loc=stat_legend_loc, fontsize=8,
-                title="Statistic", title_fontsize=8, framealpha=0.9,
+                title="Statistic", title_fontsize=8, frameon=False,
                 handlelength=2.4, labelspacing=0.3, borderpad=0.4,
             )
 
@@ -692,6 +751,7 @@ def _add_be_fd_divider(ax, traps, key, *, abs_value=True, n_grid=240, label=True
         i = idx[max(0, len(idx) // 6)]
         ax.text(xs[i], sep[i] * 3.0, up_name, color="0.3", fontsize=8,
                 style="italic", ha="left", va="bottom", zorder=3)
+        traps = _ordered_relabeled(traps)
         ax.text(xs[i], sep[i] / 3.0, lo_name, color="0.3", fontsize=8,
                 style="italic", ha="left", va="top", zorder=3)
 
@@ -701,33 +761,58 @@ def _add_be_fd_divider(ax, traps, key, *, abs_value=True, n_grid=240, label=True
 # ---------------------------------------------------------------------------
 def plot_energies_per_particle(
     traps: Sequence[dict], *,
-    figsize: Optional[tuple] = (16, 5),
+    figsize: Optional[tuple] = (12, 9),
     log_x: bool = True, log_y: bool = True,
     lw: float = 1.6, reference_lines: bool = True,
     stat_legend_loc: str = "best",
+    labeling: str = "old", grid: bool = False,
     xscale: Optional[str] = None, yscale: Optional[str] = None,
 ):
-    """Figure 1: |Omega/N|, |F/N|, |G/N| (per-particle, normalized), log-log.
+    """Figure 1: |S/N|, |F/N|, |G/N|, |Omega/N| (per-particle, normalized).
 
     Each quantity is ``|(X/N)_i / (X/N)_0|`` built from the self-normalized
-    lists. Trap -> colour, statistic -> line style; a statistic key sits in
-    every subplot, the trap key below the figure. `xscale`/`yscale` accept
-    any matplotlib scale and override `log_x`/`log_y`.
+    lists. The four panels are laid out 2x2 as::
+
+        S      F
+        G      Omega
+
+    Trap -> colour, statistic -> line style. `labeling` selects the legend
+    layout (``'old'`` = per-panel Statistic box + bottom Trap legend;
+    ``'new'`` = combined block); both are box-less. `grid` toggles the
+    background grid. `xscale`/`yscale` accept any matplotlib scale and
+    override `log_x`/`log_y`.
     """
+    labeling = _resolve_labeling(labeling)
     xs = _resolve_scale(xscale, log_x)
     ys = _resolve_scale(yscale, log_y)
+    traps = _ordered_relabeled(traps)
     panels = [
-        ("Omega_over_N", r"$|\Omega/N|$"),
+        ("S_over_N",     r"$|S/N|$"),
         ("F_over_N",     r"$|F/N|$"),
         ("G_over_N",     r"$|G/N|$"),
+        ("Omega_over_N", r"$|\Omega/N|$"),
     ]
-    fig, axes = plt.subplots(1, 3, figsize=figsize)
-    for ax, (key, title) in zip(axes, panels):
+    fig, axd = plt.subplot_mosaic(
+        [["S_over_N", "F_over_N"],
+         ["G_over_N", "Omega_over_N"]],
+        figsize=figsize,
+    )
+    for key, title in panels:
+        ax = axd[key]
         _line_panel(ax, traps, key, title, abs_value=True,
                     xscale=xs, yscale=ys, reference_lines=reference_lines,
-                    lw=lw, stat_legend=False, stat_legend_loc=stat_legend_loc)
-    fig.tight_layout(rect=[0, _LEGEND_RECT_BOTTOM, 1, 0.97])
-    _combined_legend(fig, traps)
+                    lw=lw, stat_legend=(labeling == "old"),
+                    stat_legend_loc=stat_legend_loc, grid=grid)
+        #if key == "Omega_over_N":
+            #ax.set_xlim(1e-3, 1e-1)   # Omega panel — its own x-range
+            #ax.set_ylim(1e-3, 1e-1)   # Omega panel — its own y-range
+        #elif key == "S_over_N":
+            #ax.set_xlim(5e-4, 1e-1)   # Omega panel — its own x-range
+            #ax.set_ylim(1e-3, 1e-0)   # Omega panel — its own y-range
+        #else:
+            #ax.set_xlim(3e-4, 1e-1)   # S/N, F/N and G/N panels
+            #ax.set_ylim(1e-6, 1e-1)
+    _draw_bottom_legend(fig, traps, labeling=labeling, top=0.97)
     return fig
 
 
@@ -738,14 +823,18 @@ def plot_compressibility(
     lw: float = 1.6, reference_lines: bool = True,
     divide_be_fd: bool = True,
     stat_legend_loc: str = "best",
+    labeling: str = "old", grid: bool = False,
     xscale: Optional[str] = None, yscale: Optional[str] = None,
 ):
     """Figure 2: kappa_T and B_P (normalized X_i/X_0), log-log.
 
     BE and FD fan out into separate trajectories at the cold end; with
-    `divide_be_fd` a separatrix splits the plane into the BE and FD regions.
-    `xscale`/`yscale` accept any matplotlib scale and override `log_x`/`log_y`.
+    `divide_be_fd` a separatrix line splits the plane into the BE and FD
+    regions. `labeling` selects the legend layout, `grid` toggles the
+    background grid. `xscale`/`yscale` accept any matplotlib scale and
+    override `log_x`/`log_y`.
     """
+    labeling = _resolve_labeling(labeling)
     xs = _resolve_scale(xscale, log_x)
     ys = _resolve_scale(yscale, log_y)
     panels = [
@@ -756,45 +845,64 @@ def plot_compressibility(
     for ax, (key, title) in zip(axes, panels):
         _line_panel(ax, traps, key, title, abs_value=True,
                     xscale=xs, yscale=ys, reference_lines=reference_lines,
-                    lw=lw, stat_legend=True, stat_legend_loc=stat_legend_loc)
+                    lw=lw, stat_legend=(labeling == "old"),
+                    stat_legend_loc=stat_legend_loc, grid=grid)
+        traps = _ordered_relabeled(traps)
         if divide_be_fd:
             _add_be_fd_divider(ax, traps, key, abs_value=True)
-    fig.suptitle(r"Isothermal compressibility & thermal expansion "
-                 r"(normalized $X_i / X_0$)", fontsize=12)
-    _trap_figlegend(fig, traps)
-    fig.tight_layout(rect=[0, 0.08, 1, 0.95])
+            if key == "kappa_T":
+                ax.set_xlim(3e-4, 1e-1)
+                ax.set_ylim(1e2, 1e6)
+            elif key == "B_P":
+                ax.set_xlim(9e-4, 5e-2)
+                ax.set_ylim(2e1, 1e3)
+    
+    #fig.suptitle(r"Isothermal compressibility & thermal expansion "
+                 #r"(normalized $X_i / X_0$)", fontsize=12)
+    _draw_bottom_legend(fig, traps, labeling=labeling, top=0.95)
     return fig
 
 
 def plot_heat_capacities(
     traps: Sequence[dict], *,
-    figsize: Optional[tuple] = (16, 5),
+    figsize: Optional[tuple] = (16, 9),
     log_x: bool = True, log_y: bool = True,
     lw: float = 1.6, reference_lines: bool = True,
     stat_legend_loc: str = "best",
+    labeling: str = "old", grid: bool = False,
     xscale: Optional[str] = None, yscale: Optional[str] = None,
 ):
     """Figure 3: |C_V/N|, |C_P/N|, |(C_P-C_V)/N| (per-particle), log-log.
 
+    C_V and C_P share the top row; (C_P-C_V) spans the row below them.
+    `labeling` selects the legend layout, `grid` toggles the background grid.
     `xscale`/`yscale` accept any matplotlib scale and override `log_x`/`log_y`
     (e.g. pass ``yscale="linear"`` for a semilog-x view).
     """
+    labeling = _resolve_labeling(labeling)
     xs = _resolve_scale(xscale, log_x)
     ys = _resolve_scale(yscale, log_y)
     panels = [
         ("CV_over_N",          r"$|C_V/N|$"),
         ("CP_over_N",          r"$|C_P/N|$"),
-        ("CP_minus_CV_over_N", r"$|(C_P-C_V)/N|$"),
+        #("CP_minus_CV_over_N", r"$|(C_P-C_V)/N|$"),
     ]
-    fig, axes = plt.subplots(1, 3, figsize=figsize)
-    for ax, (key, title) in zip(axes, panels):
+    traps = _ordered_relabeled(traps)
+    fig, axd = plt.subplot_mosaic(
+        [["CV_over_N", "CV_over_N", "CP_over_N", "CP_over_N"]],
+         #[".", "CP_minus_CV_over_N", "CP_minus_CV_over_N", "."]],
+        figsize=figsize,
+    )
+    for key, title in panels:
+        ax = axd[key]
         _line_panel(ax, traps, key, title, abs_value=True,
                     xscale=xs, yscale=ys, reference_lines=reference_lines,
-                    lw=lw, stat_legend=True, stat_legend_loc=stat_legend_loc)
-    fig.suptitle(r"Heat capacities per particle, normalized to initial:  "
-                 r"$|(X/N)_i / (X/N)_0|$", fontsize=12)
-    _trap_figlegend(fig, traps)
-    fig.tight_layout(rect=[0, 0.08, 1, 0.95])
+                    lw=lw, stat_legend=(labeling == "old"),
+                    stat_legend_loc=stat_legend_loc, grid=grid)
+        ax.set_xlim(5e-4, 1e-1)
+    #fig.suptitle(r"Heat capacities per particle, normalized to initial:  "
+                 #r"$|(X/N)_i / (X/N)_0|$", fontsize=12)
+    _draw_bottom_legend(fig, traps, labeling=labeling, top=0.95)
     return fig
 
 
@@ -804,20 +912,24 @@ def plot_n_vs_t(
     log_x: bool = True, log_y: bool = True,
     lw: float = 1.6, reference_lines: bool = True,
     stat_legend_loc: str = "best",
+    labeling: str = "old", grid: bool = False,
     xscale: Optional[str] = None, yscale: Optional[str] = None,
 ):
     """Figure 4: N_i/N_0 vs T_i/T_0, log-log.
 
+    `labeling` selects the legend layout, `grid` toggles the background grid.
     `xscale`/`yscale` accept any matplotlib scale and override `log_x`/`log_y`.
     """
+    labeling = _resolve_labeling(labeling)
     xs = _resolve_scale(xscale, log_x)
     ys = _resolve_scale(yscale, log_y)
+    traps = _ordered_relabeled(traps)
     fig, ax = plt.subplots(figsize=figsize)
     _line_panel(ax, traps, "N", r"$N_i / N_0$", abs_value=False,
                 xscale=xs, yscale=ys, reference_lines=reference_lines,
-                lw=lw, stat_legend=False, stat_legend_loc=stat_legend_loc)
-    fig.tight_layout(rect=[0, _LEGEND_RECT_BOTTOM, 1, 0.97])
-    _combined_legend(fig, traps)
+                lw=lw, stat_legend=(labeling == "old"),
+                stat_legend_loc=stat_legend_loc, grid=grid)
+    _draw_bottom_legend(fig, traps, labeling=labeling, top=0.97)
     return fig
 
 # =============================================================================
@@ -946,12 +1058,11 @@ def _combined_legend(
 
     One block per potential (trap name header), and within each block the three
     statistics drawn in that trap's true colour-shade + line style, each tagged
-    MB / BE / FD. The whole grid is enclosed in a thin gray box; the title is
-    centred on the figure, just under the panels' x-axis. Call AFTER
+    MB / BE / FD. Drawn box-less; the title is centred on the figure, just
+    under the panels' x-axis. Call AFTER
     ``fig.tight_layout(rect=[0, _LEGEND_RECT_BOTTOM, 1, top])``.
     """
     import textwrap
-    from matplotlib.patches import Rectangle
 
     stats = _present_stats(traps)
     cols = [t for t in traps if _trap_display(t)]
@@ -972,7 +1083,6 @@ def _combined_legend(
 
     # Vertical layout within the strip.
     title_y = 0.94
-    box_top, box_bot = 0.82, 0.05
     head_y = 0.68
     row_ys = (np.linspace(0.46, 0.12, n_rows) if n_rows > 1
               else [0.5 * (0.46 + 0.12)])
@@ -980,12 +1090,6 @@ def _combined_legend(
     # Title: normal weight, centred on the figure middle, alongside the x-axis.
     if title:
         lax.text(0.5, title_y, title, ha="center", va="center", fontsize=11)
-
-    # Thin gray box tight around the grid.
-    lax.add_patch(Rectangle(
-        (left - 0.015, box_bot), span + 0.03, box_top - box_bot,
-        fill=False, edgecolor="0.55", linewidth=1.0, zorder=0.5,
-    ))
 
     for i, t in enumerate(cols):
         cell_left = left + i * col_w
@@ -1064,7 +1168,8 @@ def plot_compressibility_regions(
     log_x: bool = True, log_y: bool = True,
     lw: float = 1.6, reference_lines: bool = True,
     shade: bool = True,
-    stat_legend_loc: str = "best",   # accepted for signature parity; unused
+    stat_legend_loc: str = "best",
+    labeling: str = "old", grid: bool = False,
     xscale: Optional[str] = None, yscale: Optional[str] = None,
     region_kwargs: Optional[dict] = None,
 ):
@@ -1072,9 +1177,10 @@ def plot_compressibility_regions(
 
     Two panels: ``kappa_T`` (curves only -- the BE/FD bundles overlap around
     MB there, so no clean frontier) and ``B_P`` (BE stippled with dots above
-    the MB curve, FD with translucent triangles below it). No figure title;
-    the combined Trap x Statistic legend sits below the panels.
+    the MB curve, FD with translucent triangles below it). `labeling` selects
+    the legend layout, `grid` toggles the background grid.
     """
+    labeling = _resolve_labeling(labeling)
     xs_ = _resolve_scale(xscale, log_x)
     ys_ = _resolve_scale(yscale, log_y)
     panels = [
@@ -1085,7 +1191,8 @@ def plot_compressibility_regions(
     for ax, (key, title, do_shade) in zip(axes, panels):
         _line_panel(ax, traps, key, title, abs_value=True,
                     xscale=xs_, yscale=ys_, reference_lines=reference_lines,
-                    lw=lw, stat_legend=False, stat_legend_loc=stat_legend_loc)
+                    lw=lw, stat_legend=(labeling == "old"),
+                    stat_legend_loc=stat_legend_loc, grid=grid)
         if shade and do_shade:
             fr = _mb_frontier(traps, key, abs_value=True)
             if fr is not None:
@@ -1094,8 +1201,7 @@ def plot_compressibility_regions(
                                      xscale=xs_, yscale=ys_,
                                      **(region_kwargs or {}))
                 _region_corner_labels(ax, up_name, lo_name)
-    fig.tight_layout(rect=[0, _LEGEND_RECT_BOTTOM, 1, 0.97])
-    _combined_legend(fig, traps)
+    _draw_bottom_legend(fig, traps, labeling=labeling, top=0.97)
     return fig
 
 
@@ -1105,16 +1211,18 @@ def plot_heat_capacities_regions(
     log_x: bool = True, log_y: bool = True,
     lw: float = 1.6, reference_lines: bool = True,
     shade: bool = True,
-    stat_legend_loc: str = "best",   # accepted for signature parity; unused
+    stat_legend_loc: str = "best",
+    labeling: str = "old", grid: bool = False,
     xscale: Optional[str] = None, yscale: Optional[str] = None,
     region_kwargs: Optional[dict] = None,
 ):
     """Heat-capacity figure with MB-bounded BE / FD shading on all panels.
 
     Three per-particle panels (|C_V/N|, |C_P/N|, |(C_P-C_V)/N|): BE stippled
-    with dots above the MB curve, FD with translucent triangles below it. No
-    figure title; the combined Trap x Statistic legend sits below the panels.
+    with dots above the MB curve, FD with translucent triangles below it.
+    `labeling` selects the legend layout, `grid` toggles the background grid.
     """
+    labeling = _resolve_labeling(labeling)
     xs_ = _resolve_scale(xscale, log_x)
     ys_ = _resolve_scale(yscale, log_y)
     panels = [
@@ -1126,7 +1234,8 @@ def plot_heat_capacities_regions(
     for ax, (key, title) in zip(axes, panels):
         _line_panel(ax, traps, key, title, abs_value=True,
                     xscale=xs_, yscale=ys_, reference_lines=reference_lines,
-                    lw=lw, stat_legend=False, stat_legend_loc=stat_legend_loc)
+                    lw=lw, stat_legend=(labeling == "old"),
+                    stat_legend_loc=stat_legend_loc, grid=grid)
         if shade:
             fr = _mb_frontier(traps, key, abs_value=True)
             if fr is not None:
@@ -1135,6 +1244,5 @@ def plot_heat_capacities_regions(
                                      xscale=xs_, yscale=ys_,
                                      **(region_kwargs or {}))
                 _region_corner_labels(ax, up_name, lo_name)
-    fig.tight_layout(rect=[0, _LEGEND_RECT_BOTTOM, 1, 0.97])
-    _combined_legend(fig, traps)
+    _draw_bottom_legend(fig, traps, labeling=labeling, top=0.97)
     return fig

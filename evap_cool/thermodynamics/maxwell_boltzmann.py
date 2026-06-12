@@ -40,6 +40,10 @@ avoided exactly as it is for the quantum equilibrium kernel.
 
 import mpmath as mp
 import scipy.special as ss
+from ..constants import ConstantsSI, ConstantsEV
+
+def thermal_wavelength(T):
+        return ConstantsEV.h / mp.sqrt(2 * mp.pi * ConstantsEV.m_Na23 * ConstantsEV.kB * mp.mpf(T))
 
 
 def mb_particle_number(N0, Q, T):
@@ -160,13 +164,14 @@ def mb_state_functions_pure_geometry(s, N, T, alpha, V_g, kB):
 
     NkT = N * kB * T              # appears in nearly every formula
     Mu = alpha * kB * T
+    lam = thermal_wavelength(T)
 
     Omega = -NkT
     P     = NkT / V_g             # = -Omega / V_g
-    S     = N * kB * ((s + 1) - alpha)
+    S     = N * kB * (s + 1) * [mp.log(V_g/(N * lam**3))+1]
     H     = (s + 1) * NkT
-    F     = NkT * (alpha - 1)
-    G     = Mu * N                # = NkT * alpha
+    F     = -NkT * (s + 1) * [mp.log(V_g/(N * lam**3))-1]
+    G     = NkT * mp.log(V_g/(N * lam**3))                # = NkT * alpha
     E     = s * NkT
 
     return {
