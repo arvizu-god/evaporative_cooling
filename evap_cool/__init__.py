@@ -175,6 +175,8 @@ from .plots_dimensionless import (
     plot_compressibility,
     plot_heat_capacities,
     plot_n_vs_t,
+    plot_compressibility_regions,
+    plot_heat_capacities_regions,
     build_normalized_traps,
     TRAP_COLORS,
     STAT_MARKERS,
@@ -232,5 +234,6 @@ __all__ = [
     "plot_dimensionless_overview", "plot_cp_minus_cv",
     "plot_energies_per_particle", "plot_compressibility",
     "plot_heat_capacities", "plot_n_vs_t",
+    "plot_compressibility_regions", "plot_heat_capacities_regions",
     "build_normalized_traps", "TRAP_COLORS", "STAT_MARKERS", "STAT_LINESTYLES",
 ]

@@ -77,9 +77,9 @@ _FALLBACK_COLOR = "#9e9e9e"
 TRAP_LABELS = {
     "box":         "Box",
     "quadrupole":  "Quadrupole",
-    "oscillator":  "Oscillator",
-    "box2d_osc1d": "Box2d_osc1d",
-    "osc2d_box1d": "Osc2d_box1d",
+    "oscillator":  "Harmonic Oscillator",
+    "box2d_osc1d": "2D Box + 1D Oscillator",
+    "osc2d_box1d": "2D Oscillator + 1D Box",
 }
 
 # Statistic identity -> marker shape (consistent across all traps).
@@ -725,11 +725,9 @@ def plot_energies_per_particle(
     for ax, (key, title) in zip(axes, panels):
         _line_panel(ax, traps, key, title, abs_value=True,
                     xscale=xs, yscale=ys, reference_lines=reference_lines,
-                    lw=lw, stat_legend=True, stat_legend_loc=stat_legend_loc)
-    fig.suptitle(r"Energies per particle, normalized to initial:  "
-                 r"$|(X/N)_i / (X/N)_0|$", fontsize=12)
-    _trap_figlegend(fig, traps)
-    fig.tight_layout(rect=[0, 0.08, 1, 0.95])
+                    lw=lw, stat_legend=False, stat_legend_loc=stat_legend_loc)
+    fig.tight_layout(rect=[0, _LEGEND_RECT_BOTTOM, 1, 0.97])
+    _combined_legend(fig, traps)
     return fig
 
 
@@ -817,9 +815,326 @@ def plot_n_vs_t(
     fig, ax = plt.subplots(figsize=figsize)
     _line_panel(ax, traps, "N", r"$N_i / N_0$", abs_value=False,
                 xscale=xs, yscale=ys, reference_lines=reference_lines,
-                lw=lw, stat_legend=True, stat_legend_loc=stat_legend_loc)
-    ax.set_title(r"Population vs temperature:  $N_i/N_0$ vs $T_i/T_0$",
-                 fontsize=12)
-    _trap_figlegend(fig, traps, y=-0.02)
-    fig.tight_layout(rect=[0, 0.10, 1, 0.96])
+                lw=lw, stat_legend=False, stat_legend_loc=stat_legend_loc)
+    fig.tight_layout(rect=[0, _LEGEND_RECT_BOTTOM, 1, 0.97])
+    _combined_legend(fig, traps)
+    return fig
+
+# =============================================================================
+# Region-shading primitives (used by the *_regions figures)
+# =============================================================================
+REGION_BE_MARKER = "."          # Bose-Einstein -> dots
+REGION_FD_MARKER = "^"          # Fermi-Dirac   -> triangles
+_REGION_DOT_COLOR = "0.45"
+_REGION_TRI_COLOR = "0.45"
+
+
+def _ffill_bfill(a: np.ndarray) -> np.ndarray:
+    """Fill NaNs by carrying the nearest finite value (flat extension)."""
+    a = np.asarray(a, dtype=float).copy()
+    last = math.nan
+    for i in range(a.size):                       # forward
+        if math.isfinite(a[i]):
+            last = a[i]
+        elif math.isfinite(last):
+            a[i] = last
+    nxt = math.nan
+    for i in range(a.size - 1, -1, -1):           # backward
+        if math.isfinite(a[i]):
+            nxt = a[i]
+        elif math.isfinite(nxt):
+            a[i] = nxt
+    return a
+
+
+def _boundary_on_grid(xs, boundary, gx):
+    """Interpolate the (positive) boundary onto `gx` in log-log, flat outside."""
+    b = np.asarray(boundary, float)
+    m = np.isfinite(b) & (b > 0) & np.isfinite(xs) & (xs > 0)
+    if m.sum() < 2:
+        return None
+    lx, ly = np.log(np.asarray(xs, float)[m]), np.log(b[m])
+    order = np.argsort(lx)
+    lx, ly = lx[order], ly[order]
+    gx_safe = np.clip(np.asarray(gx, float), np.finfo(float).tiny, None)
+    return np.exp(np.interp(np.log(gx_safe), lx, ly))   # clamped (flat) outside
+
+
+def _shade_be_fd_regions(
+    ax, xs, boundary, be_is_upper, *,
+    xscale, yscale,
+    nx=46, ny=28,
+    dot_color=_REGION_DOT_COLOR, tri_color=_REGION_TRI_COLOR,
+    dot_size=11.0, tri_size=14.0,         # BE dots enlarged
+    dot_alpha=0.40, tri_alpha=0.22,
+    zorder=0.6,
+):
+    """Stipple the BE half-plane with dots and the FD half-plane with triangles.
+
+    A regular grid is laid over the current axes box (spaced to match each
+    axis scale), split by `boundary`, and each half scattered with its marker.
+    Axis limits are preserved.
+    """
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    tiny = np.finfo(float).tiny
+
+    if xscale == "log":
+        gx = np.logspace(np.log10(max(x0, tiny)), np.log10(max(x1, tiny)), nx)
+    else:
+        gx = np.linspace(x0, x1, nx)
+    if yscale == "log":
+        gy = np.logspace(np.log10(max(y0, tiny)), np.log10(max(y1, tiny)), ny)
+    else:
+        gy = np.linspace(y0, y1, ny)
+
+    bnd = _boundary_on_grid(xs, boundary, gx)
+    if bnd is None:
+        return
+
+    XX, YY = np.meshgrid(gx, gy)
+    BND = np.tile(bnd, (ny, 1))
+    upper = YY > BND
+    lower = ~upper
+    be_mask, fd_mask = (upper, lower) if be_is_upper else (lower, upper)
+
+    ax.scatter(XX[be_mask], YY[be_mask], marker=REGION_BE_MARKER, s=dot_size,
+               c=dot_color, alpha=dot_alpha, linewidths=0.0, zorder=zorder)
+    ax.scatter(XX[fd_mask], YY[fd_mask], marker=REGION_FD_MARKER, s=tri_size,
+               c=tri_color, alpha=tri_alpha, linewidths=0.0, zorder=zorder)
+    ax.set_xlim(x0, x1)
+    ax.set_ylim(y0, y1)
+
+
+def _region_corner_labels(
+    ax, up_name, lo_name, *,
+    color="0.20", fontsize=10, x_frac=0.035,
+):
+    """Place the two region labels in the top/bottom corners, off the curves."""
+    box = dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.6)
+    ax.text(x_frac, 0.965, up_name, transform=ax.transAxes, color=color,
+            fontsize=fontsize, style="italic", ha="left", va="top",
+            bbox=box, zorder=4)
+    ax.text(x_frac, 0.035, lo_name, transform=ax.transAxes, color=color,
+            fontsize=fontsize, style="italic", ha="left", va="bottom",
+            bbox=box, zorder=4)
+
+
+# =============================================================================
+# Combined Trap x Statistic legend (shared by all four split figures)
+# =============================================================================
+# A single legend block drawn OUTSIDE the subplots: one column per potential
+# (trap name as the column header), one row per statistic (MB / BE / FD), and
+# each cell a short line sample in that trap's true colour-shade and the
+# statistic's true line style. Reading down a column gives one trap's three
+# lines; reading across compares a statistic across traps. This replaces both
+# the inner "Statistic" legend and the old bottom "Trap (potential)" legend.
+
+# Fraction of the figure height reserved at the bottom for the combined legend.
+_LEGEND_RECT_BOTTOM = 0.24
+
+# Short row labels for the statistics.
+STAT_SHORT = {"mb": "MB", "bosons": "BE", "fermions": "FD"}
+
+
+def _combined_legend(
+    fig, traps: Sequence[dict], *,
+    y0: float = 0.01, height: float = 0.21,
+    title: Optional[str] = "Potential / Statistic",
+):
+    """Draw the combined Trap x Statistic legend in a strip at the figure bottom.
+
+    One block per potential (trap name header), and within each block the three
+    statistics drawn in that trap's true colour-shade + line style, each tagged
+    MB / BE / FD. The whole grid is enclosed in a thin gray box; the title is
+    centred on the figure, just under the panels' x-axis. Call AFTER
+    ``fig.tight_layout(rect=[0, _LEGEND_RECT_BOTTOM, 1, top])``.
+    """
+    import textwrap
+    from matplotlib.patches import Rectangle
+
+    stats = _present_stats(traps)
+    cols = [t for t in traps if _trap_display(t)]
+    n_cols, n_rows = len(cols), len(stats)
+    if n_cols == 0 or n_rows == 0:
+        return None
+
+    lax = fig.add_axes([0.0, y0, 1.0, height])
+    lax.set_xlim(0, 1)
+    lax.set_ylim(0, 1)
+    lax.axis("off")
+
+    left, right = 0.06, 0.98
+    span = right - left
+    col_w = span / n_cols
+    head_fs = 10 if n_cols <= 4 else 9
+    label_gray = "0.40"          # MB/BE/FD tags: lighter but readable
+
+    # Vertical layout within the strip.
+    title_y = 0.94
+    box_top, box_bot = 0.82, 0.05
+    head_y = 0.68
+    row_ys = (np.linspace(0.46, 0.12, n_rows) if n_rows > 1
+              else [0.5 * (0.46 + 0.12)])
+
+    # Title: normal weight, centred on the figure middle, alongside the x-axis.
+    if title:
+        lax.text(0.5, title_y, title, ha="center", va="center", fontsize=11)
+
+    # Thin gray box tight around the grid.
+    lax.add_patch(Rectangle(
+        (left - 0.015, box_bot), span + 0.03, box_top - box_bot,
+        fill=False, edgecolor="0.55", linewidth=1.0, zorder=0.5,
+    ))
+
+    for i, t in enumerate(cols):
+        cell_left = left + i * col_w
+        cx = cell_left + col_w / 2.0
+        base = _trap_color(_trap_key(t))
+
+        header = "\n".join(textwrap.wrap(_trap_display(t), width=13)) \
+            or _trap_display(t)
+        lax.text(cx, head_y, header, ha="center", va="center",
+                 fontsize=head_fs, linespacing=0.95)
+
+        lbl_x = cell_left + col_w * 0.06
+        s_x0 = cell_left + col_w * 0.34
+        s_x1 = cell_left + col_w * 0.94
+        for ry, stat in zip(row_ys, stats):
+            lax.text(lbl_x, ry, STAT_SHORT.get(stat, stat),
+                     ha="left", va="center", fontsize=8,
+                     color=label_gray)
+            lax.plot([s_x0, s_x1], [ry, ry],
+                     color=_stat_color(base, stat),
+                     linestyle=STAT_LINESTYLES.get(stat, "-"),
+                     lw=2.0, solid_capstyle="round")
+    return lax
+
+
+# =============================================================================
+# MB-curve frontier + BE / FD region shading
+# =============================================================================
+# The boundary between the BE and FD halves is the Maxwell-Boltzmann curve
+# (the per-x median of all traps' MB curves -- they sit almost on top of one
+# another, so this is a sharp line). BE is textured on the side where the BE
+# bundle sits relative to MB at the cold end; FD on the other. The MB solid
+# curves already drawn are the visible frontier; no extra divider is added.
+
+def _mb_frontier(traps, key, *, abs_value=True, n_grid=240):
+    """Return ``(xs, mb_curve, be_is_upper, up_name, lo_name)`` or None.
+
+    ``mb_curve`` is the per-x median of the traps' MB curves, flat-extended
+    across the x-range; ``be_is_upper`` says whether the BE bundle sits above
+    MB at the cold end.
+    """
+    tvals = []
+    for t in traps:
+        res = t.get("mb")
+        if res and res.get("T"):
+            a = _to_float_array(res["T"])
+            a = a[np.isfinite(a) & (a > 0)]
+            if a.size:
+                tvals.append(a)
+    if not tvals:
+        return None
+    allt = np.concatenate(tvals)
+    xs = np.logspace(np.log10(allt.min()), np.log10(allt.max()), n_grid)
+
+    mb = _bundle(traps, key, "mb", xs, abs_value)
+    if mb is None:
+        return None
+    mb_curve = np.nanmedian(mb, axis=0)
+    if np.isfinite(mb_curve).sum() < 2:
+        return None
+
+    cold = slice(0, max(1, n_grid // 3))
+    be = _bundle(traps, key, "bosons", xs, abs_value)
+    be_above = True
+    if be is not None:
+        be_med = np.nanmedian(be, axis=0)
+        be_above = (np.nanmedian(be_med[cold]) >= np.nanmedian(mb_curve[cold]))
+    up_name, lo_name = (("Bose-Einstein", "Fermi-Dirac") if be_above
+                        else ("Fermi-Dirac", "Bose-Einstein"))
+    return xs, _ffill_bfill(mb_curve), be_above, up_name, lo_name
+
+
+def plot_compressibility_regions(
+    traps: Sequence[dict], *,
+    figsize: Optional[tuple] = (12, 5),
+    log_x: bool = True, log_y: bool = True,
+    lw: float = 1.6, reference_lines: bool = True,
+    shade: bool = True,
+    stat_legend_loc: str = "best",   # accepted for signature parity; unused
+    xscale: Optional[str] = None, yscale: Optional[str] = None,
+    region_kwargs: Optional[dict] = None,
+):
+    """Compressibility figure with MB-bounded BE / FD shading on B_P only.
+
+    Two panels: ``kappa_T`` (curves only -- the BE/FD bundles overlap around
+    MB there, so no clean frontier) and ``B_P`` (BE stippled with dots above
+    the MB curve, FD with translucent triangles below it). No figure title;
+    the combined Trap x Statistic legend sits below the panels.
+    """
+    xs_ = _resolve_scale(xscale, log_x)
+    ys_ = _resolve_scale(yscale, log_y)
+    panels = [
+        ("kappa_T", r"$\kappa_{T,i} / \kappa_{T,0}$", False),
+        ("B_P",     r"$B_{P,i} / B_{P,0}$",           True),
+    ]
+    fig, axes = plt.subplots(1, 2, figsize=figsize)
+    for ax, (key, title, do_shade) in zip(axes, panels):
+        _line_panel(ax, traps, key, title, abs_value=True,
+                    xscale=xs_, yscale=ys_, reference_lines=reference_lines,
+                    lw=lw, stat_legend=False, stat_legend_loc=stat_legend_loc)
+        if shade and do_shade:
+            fr = _mb_frontier(traps, key, abs_value=True)
+            if fr is not None:
+                xsg, mbc, be_up, up_name, lo_name = fr
+                _shade_be_fd_regions(ax, xsg, mbc, be_up,
+                                     xscale=xs_, yscale=ys_,
+                                     **(region_kwargs or {}))
+                _region_corner_labels(ax, up_name, lo_name)
+    fig.tight_layout(rect=[0, _LEGEND_RECT_BOTTOM, 1, 0.97])
+    _combined_legend(fig, traps)
+    return fig
+
+
+def plot_heat_capacities_regions(
+    traps: Sequence[dict], *,
+    figsize: Optional[tuple] = (16, 5),
+    log_x: bool = True, log_y: bool = True,
+    lw: float = 1.6, reference_lines: bool = True,
+    shade: bool = True,
+    stat_legend_loc: str = "best",   # accepted for signature parity; unused
+    xscale: Optional[str] = None, yscale: Optional[str] = None,
+    region_kwargs: Optional[dict] = None,
+):
+    """Heat-capacity figure with MB-bounded BE / FD shading on all panels.
+
+    Three per-particle panels (|C_V/N|, |C_P/N|, |(C_P-C_V)/N|): BE stippled
+    with dots above the MB curve, FD with translucent triangles below it. No
+    figure title; the combined Trap x Statistic legend sits below the panels.
+    """
+    xs_ = _resolve_scale(xscale, log_x)
+    ys_ = _resolve_scale(yscale, log_y)
+    panels = [
+        ("CV_over_N",          r"$|C_V/N|$"),
+        ("CP_over_N",          r"$|C_P/N|$"),
+        ("CP_minus_CV_over_N", r"$|(C_P-C_V)/N|$"),
+    ]
+    fig, axes = plt.subplots(1, 3, figsize=figsize)
+    for ax, (key, title) in zip(axes, panels):
+        _line_panel(ax, traps, key, title, abs_value=True,
+                    xscale=xs_, yscale=ys_, reference_lines=reference_lines,
+                    lw=lw, stat_legend=False, stat_legend_loc=stat_legend_loc)
+        if shade:
+            fr = _mb_frontier(traps, key, abs_value=True)
+            if fr is not None:
+                xsg, mbc, be_up, up_name, lo_name = fr
+                _shade_be_fd_regions(ax, xsg, mbc, be_up,
+                                     xscale=xs_, yscale=ys_,
+                                     **(region_kwargs or {}))
+                _region_corner_labels(ax, up_name, lo_name)
+    fig.tight_layout(rect=[0, _LEGEND_RECT_BOTTOM, 1, 0.97])
+    _combined_legend(fig, traps)
     return fig
