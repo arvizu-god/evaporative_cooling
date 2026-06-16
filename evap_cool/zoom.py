@@ -543,7 +543,7 @@ def run_with_fermi_zoom(
         out_fine = run_quantum_evaporation(
             fine, trap, seed_N,                # local N0 for fine-stage Nf
             n_steps=n_steps_fine, dT=dT, dmu=dmu, sign=sign,
-            real_part_on_mpc=True, verbose=verbose,
+            real_part_on_mpc=False, verbose=verbose,
         )
 
         # ------------------------------------------------------------------

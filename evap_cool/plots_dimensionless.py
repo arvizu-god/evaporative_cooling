@@ -850,12 +850,12 @@ def plot_compressibility(
         traps = _ordered_relabeled(traps)
         if divide_be_fd:
             _add_be_fd_divider(ax, traps, key, abs_value=True)
-            if key == "kappa_T":
-                ax.set_xlim(3e-4, 1e-1)
-                ax.set_ylim(1e2, 1e6)
-            elif key == "B_P":
-                ax.set_xlim(9e-4, 5e-2)
-                ax.set_ylim(2e1, 1e3)
+            #if key == "kappa_T":
+                #ax.set_xlim(3e-4, 1e-1)
+                #ax.set_ylim(1e2, 1e6)
+            #elif key == "B_P":
+                #ax.set_xlim(9e-4, 5e-2)
+                #ax.set_ylim(2e1, 1e3)
     
     #fig.suptitle(r"Isothermal compressibility & thermal expansion "
                  #r"(normalized $X_i / X_0$)", fontsize=12)

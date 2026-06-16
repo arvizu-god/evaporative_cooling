@@ -14,8 +14,6 @@ all figures into ``figures/``:
     fig2_compressibility.png        <- plain or BE/FD-shaded per TEXTURES
     fig3_heat_capacities.png        <- plain or BE/FD-shaded per TEXTURES
     fig4_N_vs_T.png
-    dimensionless_overview.png
-    cp_minus_cv.png
 
 Adjust the CONFIG block below to change scales, appearance (LABELING /
 TEXTURES / GRID), the session, or the output folder. No arguments are
@@ -61,6 +59,14 @@ FIG_DIR  = Path("figures")
 #            -1 for the newest folder regardless of contents, -7 to step back.
 SESSION_INDEX = None
 
+# Explicit session directory, taking precedence over SESSION_INDEX. Use this
+# (or the equivalent --session CLI flag, or the session_override argument to
+# main()) to pin a specific session — this is how run_pipeline.py hands the
+# freshly generated session straight to the plotting stage.
+#   None  -> fall back to SESSION_INDEX / newest-with-source-runs (default).
+#   Path  -> plot exactly this folder.
+SESSION_DIR = None
+
 # Axis scaling for every figure (any matplotlib scale name: "linear", "log",
 # "symlog", "asinh", "logit", ...).
 XSCALE = "log"
@@ -102,8 +108,21 @@ def _has_source_runs(session: Path) -> bool:
     )
 
 
-def _select_session(sessions: list[Path]) -> Path:
-    """Resolve the session to plot from the CONFIG."""
+def _select_session(sessions: list[Path], override: "Path | None" = None) -> Path:
+    """Resolve the session to plot.
+
+    Precedence (highest first):
+      1. `override` argument  (run_pipeline hand-off, or the --session CLI flag)
+      2. SESSION_DIR config    (explicit path)
+      3. SESSION_INDEX config  (index into the sorted session list)
+      4. newest session that actually contains source runs
+    """
+    explicit = override if override is not None else SESSION_DIR
+    if explicit is not None:
+        sess = Path(explicit)
+        if not sess.is_dir():
+            raise SystemExit(f"Requested session is not a directory: {sess.resolve()}")
+        return sess
     if SESSION_INDEX is not None:
         return sessions[SESSION_INDEX]
     # auto: newest-first, first session that actually has source runs
@@ -116,14 +135,15 @@ def _select_session(sessions: list[Path]) -> Path:
     )
 
 
-def main() -> None:
+def main(session_override: "Path | None" = None) -> None:
     FIG_DIR.mkdir(exist_ok=True)
 
     # --- 1. Locate the session -------------------------------------------
     sessions = list_sessions(RUNS_DIR)
-    if not sessions:
+    have_explicit = (session_override is not None) or (SESSION_DIR is not None)
+    if not sessions and not have_explicit:
         raise SystemExit(f"No sessions under {RUNS_DIR.resolve()}; set RUNS_DIR.")
-    session = _select_session(sessions)
+    session = _select_session(sessions, override=session_override)
     print(f"Selected session: {session}")
 
     source_runs = [p for p in list_runs(session, include_thermo=False)
@@ -195,17 +215,22 @@ def main() -> None:
                      labeling=LABELING, grid=GRID),
          "fig4_N_vs_T.png")
 
-    save(plot_dimensionless_overview(traps, xscale=XSCALE, yscale=YSCALE,
-                                     robust_ylim=True, ylim_pct=YLIM_PCT,
-                                     trim_tail=TRIM_TAIL, stride=STRIDE),
-         "dimensionless_overview.png")
-
-    save(plot_cp_minus_cv(traps, xscale=XSCALE, yscale=YSCALE,
-                          ylim_pct=YLIM_PCT, trim_tail=TRIM_TAIL, stride=STRIDE),
-         "cp_minus_cv.png")
-
     print(f"\nDone. Figures in {FIG_DIR.resolve()}")
 
 
+def _parse_args():
+    import argparse
+    p = argparse.ArgumentParser(
+        description="Generate the dimensionless (self-normalized) figures from a session."
+    )
+    p.add_argument(
+        "--session", type=Path, default=None,
+        help="Explicit session directory to plot. Overrides SESSION_DIR / "
+             "SESSION_INDEX. When omitted, falls back to the CONFIG block.",
+    )
+    return p.parse_args()
+
+
 if __name__ == "__main__":
-    main()
+    _args = _parse_args()
+    main(session_override=_args.session)

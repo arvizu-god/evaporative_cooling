@@ -15,18 +15,40 @@ to 1, so the quantum expressions for the equilibrium thermodynamics
 reduce to closed-form algebraic functions of (s, N, T, α). See the
 unified summary in `mb_limit_based.pdf`, Sec. 5:
 
-    N      = A(T) e^α          (defines α = ln(N/A(T)) given (N, T))
-    E      = s N kB T
-    Ω      = -N kB T
-    P      = N kB T / V_g
-    S      = N kB [(s+1) - α]
-    H      = (s+1) N kB T
-    F      = N kB T (α - 1)
-    G      = µ N = N kB T α
-    C_V    = s N kB
-    C_P    = (s+1) N kB
-    κ_T    = V_g / (N kB T)
-    B_P    = 1 / T
+    N      = A(T) e^α                       (defines α = ln(N/A(T)))
+    E      = s N kB T                                       [unchanged]
+    Ω      = -N kB T                                        [unchanged]
+    P      = N kB T / V_g                                   [unchanged]
+    S      = N kB (s+1) { ln(V/Nλ³) + 1 }   = N kB (s+1) (1 - α)
+    H      = (s+1) N kB T                                   [unchanged]
+    F      = -N kB T (s+1) { ln(V/Nλ³) - 1 } = N kB T (s+1) (α + 1)
+    G      = N kB T ln(V/Nλ³)                = -N kB T α
+    C_V    = s N kB                                         [unchanged]
+    C_P    = (s+1) N kB                                     [unchanged]
+    κ_T    = V_g / (N kB T)                                 [unchanged]
+    B_P    = 1 / T                                          [unchanged]
+
+Revision (June 2026, per Poveda-Cuevas)
+---------------------------------------
+S, F, G were updated to the closed forms above, expressed through the
+thermal wavelength as  ln(V/Nλ³).  Ω, E, P, H and all four thermal
+coefficients are unchanged.
+
+Two implementation points are worth recording explicitly:
+
+  * **ln(V/Nλ³) is evaluated as -α, not as a literal log.**  For the box
+    A(T) = V/λ³, so  ln(V/Nλ³) = ln(A(T)/N) = -α  exactly.  For the other
+    geometries (oscillator, quadrupole, the two mixed traps) `V_g` is NOT
+    a volume — it is 1/ω³, 1/Ā³, or a fixed literal scale — so the literal
+    quotient V_g/λ³ is dimensionally inconsistent and unit-system
+    dependent.  Using -α (with the trap-correct A(T) = `_prefactor_N`)
+    keeps the kernel dimensionless, unit-safe, and identical to the box
+    λ-form, with no per-trap MB code.
+
+  * **Earlier (superseded) forms.**  Prior to this revision the kernel
+    used  S = N kB [(s+1) - α],  F = N kB T (α - 1),  G = N kB T α  — the
+    canonical, Sackur-Tetrode-consistent classical limit.  They are kept
+    here only as a record; the active expressions are those above.
 
 In contrast to the quantum case, µ and E are not independent state
 variables: given (N, T) and the trap-specific A(T), both are fixed. The
@@ -42,8 +64,21 @@ import mpmath as mp
 import scipy.special as ss
 from ..constants import ConstantsSI, ConstantsEV
 
+
 def thermal_wavelength(T):
-        return ConstantsEV.h / mp.sqrt(2 * mp.pi * ConstantsEV.m_Na23 * ConstantsEV.kB * mp.mpf(T))
+    """De Broglie thermal wavelength λ(T) = h / sqrt(2 π m kB T).
+
+    .. deprecated::
+        No longer used by any kernel in this module.  The equilibrium
+        state-functions kernel now expresses ln(V/Nλ³) as -α (see module
+        docstring), so it never forms λ explicitly.  Each trap class
+        carries its own `thermal_wavelength` in a *consistent* unit system
+        (BoxTrap/mixed: SI; QuadrupoleTrap: its own constants); use those
+        if you need λ.  This module-level helper mixes ConstantsEV energy
+        units with a kg mass and is therefore numerically inconsistent —
+        retained only so existing imports do not break.
+    """
+    return ConstantsEV.h / mp.sqrt(2 * mp.pi * ConstantsEV.m_Na23 * ConstantsEV.kB * mp.mpf(T))
 
 
 def mb_particle_number(N0, Q, T):
@@ -137,19 +172,32 @@ def mb_state_functions_pure_geometry(s, N, T, alpha, V_g, kB):
     Mu and E in addition to the six state functions, since in the MB
     limit these are determined by (N, T) rather than supplied as inputs.
 
+    S, F, G follow the June-2026 revision (see module docstring):
+
+        S = N kB (s+1) { ln(V/Nλ³) + 1 }
+        F = -N kB T (s+1) { ln(V/Nλ³) - 1 }
+        G =  N kB T ln(V/Nλ³)
+
+    with the log term evaluated as  ln(V/Nλ³) = ln(A(T)/N) = -α.  This is
+    the box λ-form exactly, and the correct dimensionless generalization
+    for every other geometry (where V_g is not a volume).  Ω, P, H, E are
+    unchanged from the canonical classical limit.
+
     Parameters
     ----------
     s : float
-        Density-of-states exponent. 1.5 = box, 3 = oscillator,
-        4.5 = quadrupole.
+        Density-of-states exponent. 1.5 = box, 2 = box2d_osc1d,
+        2.5 = osc2d_box1d, 3 = oscillator, 4.5 = quadrupole.
     N, T : float
         Particle number and temperature.
     alpha : float
-        Reduced chemical potential α = µ/(kB T). The caller computes
-        this from (N, T) via the trap-specific A(T) prefactor (see
-        `Trap.mb_alpha`); this kernel does not know about A(T).
+        Reduced chemical potential α = µ/(kB T) = ln(N / A(T)). The caller
+        computes this from (N, T) via the trap-specific A(T) prefactor
+        (see `Trap.mb_alpha`); this kernel does not know about A(T).
     V_g : float
-        Trap global volume. Constant for a given trap.
+        Trap global volume. Constant for a given trap. Enters only the
+        pressure P = N kB T / V_g (unchanged by the revision); it is NOT
+        used to form the log term, which is taken as -α (see above).
     kB : float
         Boltzmann constant in the trap's unit system.
 
@@ -164,14 +212,19 @@ def mb_state_functions_pure_geometry(s, N, T, alpha, V_g, kB):
 
     NkT = N * kB * T              # appears in nearly every formula
     Mu = alpha * kB * T
-    lam = thermal_wavelength(T)
+
+    # ln(V/Nλ³) = ln(A(T)/N) = -α  for every trap (A(T) = _prefactor_N).
+    # Box: A(T) = V/λ³, so this is literally ln(V/Nλ³). Other traps: V_g is
+    # not a volume, so the literal λ-form would be unit-inconsistent; -α is
+    # the dimensionless, unit-safe generalization.
+    log_term = -alpha
 
     Omega = -NkT
-    P     = NkT / V_g             # = -Omega / V_g
-    S     = N * kB * (s + 1) * [mp.log(V_g/(N * lam**3))+1]
+    P     = NkT / V_g                                  # = -Omega / V_g
+    S     = N * kB * (s + 1) * (log_term + 1)          # Nk(s+1){ln(V/Nλ³)+1}
     H     = (s + 1) * NkT
-    F     = -NkT * (s + 1) * [mp.log(V_g/(N * lam**3))-1]
-    G     = NkT * mp.log(V_g/(N * lam**3))                # = NkT * alpha
+    F     = -NkT * (s + 1) * (log_term - 1)            # -NkT(s+1){ln(V/Nλ³)-1}
+    G     = NkT * log_term                             # NkT·ln(V/Nλ³) = -NkT·α
     E     = s * NkT
 
     return {
@@ -191,7 +244,8 @@ def mb_thermal_coefficients_pure_geometry(s, N, T, V_g, kB):
     """Closed-form MB thermal coefficients for any pure-geometry trap.
 
     No polylog evaluations; no `alpha` needed (it cancels out of the
-    classical-limit expressions). Statistics-independent.
+    classical-limit expressions). Statistics-independent. Unchanged by the
+    June-2026 revision.
 
     Parameters
     ----------
