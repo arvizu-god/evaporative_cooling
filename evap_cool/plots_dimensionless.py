@@ -767,6 +767,7 @@ def plot_energies_per_particle(
     stat_legend_loc: str = "best",
     labeling: str = "old", grid: bool = False,
     xscale: Optional[str] = None, yscale: Optional[str] = None,
+    cut_mb_at_sign_change: bool = False, cut_buffer: int = 2,
 ):
     """Figure 1: |S/N|, |F/N|, |G/N|, |Omega/N| (per-particle, normalized).
 
@@ -781,6 +782,19 @@ def plot_energies_per_particle(
     ``'new'`` = combined block); both are box-less. `grid` toggles the
     background grid. `xscale`/`yscale` accept any matplotlib scale and
     override `log_x`/`log_y`.
+
+    MB sign-change truncation
+    -------------------------
+    With ``cut_mb_at_sign_change=True``, the **Maxwell-Boltzmann curve only**
+    (BE and FD are left untouched) is truncated in the ``S``, ``F`` and ``G``
+    panels at the first sign change of that panel's own signed ``X_i / X_0``
+    series. The signed ratio flips sign exactly where the underlying
+    per-particle quantity crosses zero -- the event that, under ``abs_value``,
+    shows up as the cold-end spike in ``|X/N|``. Index 0 is the hot start
+    (``T_i / T_0 = 1``) and the index grows toward the cold end, so the MB
+    line keeps its hot head and ends just before the spike. ``cut_buffer``
+    drops a few extra steps before the crossing so the descending limb toward
+    zero is not drawn either (default 2). The ``Omega`` panel is never cut.
     """
     labeling = _resolve_labeling(labeling)
     xs = _resolve_scale(xscale, log_x)
@@ -792,6 +806,15 @@ def plot_energies_per_particle(
         ("G_over_N",     r"$|G/N|$"),
         ("Omega_over_N", r"$|\Omega/N|$"),
     ]
+    # Panels whose MB curve is eligible for sign-change truncation (Q5: not Omega).
+    _cut_keys = {"S_over_N", "F_over_N", "G_over_N"}
+    # Hard-coded per-panel axis windows, ((xmin, xmax), (ymin, ymax)). x is
+    # T_i/T_0, y is |X/N|. Applied AFTER drawing so they override autoscale.
+    _panel_limits = {
+        "F_over_N":     ((1e-3, 1e-1), (1e-5, 1e-1)),
+        "G_over_N":     ((1e-3, 5e-2), (1e-6, 1e-2)),
+        "Omega_over_N": ((9e-4, 2e-2), (9e-4, 2e-2)),
+    }
     fig, axd = plt.subplot_mosaic(
         [["S_over_N", "F_over_N"],
          ["G_over_N", "Omega_over_N"]],
@@ -799,19 +822,50 @@ def plot_energies_per_particle(
     )
     for key, title in panels:
         ax = axd[key]
-        _line_panel(ax, traps, key, title, abs_value=True,
+        panel_traps = traps
+        if cut_mb_at_sign_change and key in _cut_keys:
+            # Build per-panel shallow copies in which ONLY the MB series for
+            # this panel's quantity (and its matching T) are truncated at the
+            # first sign change. BE / FD entries are shared by reference, so
+            # they stay full length. `traps` itself is never mutated, so the
+            # bottom legend and the other panels are unaffected.
+            panel_traps = []
+            for t in traps:
+                t2 = dict(t)
+                mb = t.get("mb")
+                if mb:
+                    yv = _to_float_array(mb.get(key))
+                    tv = _to_float_array(mb.get("T"))
+                    if yv is not None and tv is not None:
+                        cut = None
+                        prev_sign = None
+                        for i in range(min(len(yv), len(tv))):
+                            v = yv[i]
+                            if not np.isfinite(v) or v == 0.0:
+                                continue
+                            sgn = 1.0 if v > 0.0 else -1.0
+                            if prev_sign is not None and sgn != prev_sign:
+                                cut = i           # first sign change (hot->cold)
+                                break
+                            prev_sign = sgn
+                        if cut is not None:
+                            end = max(0, cut - int(cut_buffer))
+                            mb2 = dict(mb)
+                            mb2["T"] = list(mb.get("T"))[:end]
+                            mb2[key] = list(mb.get(key))[:end]
+                            t2["mb"] = mb2
+                panel_traps.append(t2)
+        _line_panel(ax, panel_traps, key, title, abs_value=True,
                     xscale=xs, yscale=ys, reference_lines=reference_lines,
                     lw=lw, stat_legend=(labeling == "old"),
                     stat_legend_loc=stat_legend_loc, grid=grid)
-        #if key == "Omega_over_N":
-            #ax.set_xlim(1e-3, 1e-1)   # Omega panel — its own x-range
-            #ax.set_ylim(1e-3, 1e-1)   # Omega panel — its own y-range
-        #elif key == "S_over_N":
-            #ax.set_xlim(5e-4, 1e-1)   # Omega panel — its own x-range
-            #ax.set_ylim(1e-3, 1e-0)   # Omega panel — its own y-range
-        #else:
-            #ax.set_xlim(3e-4, 1e-1)   # S/N, F/N and G/N panels
-            #ax.set_ylim(1e-6, 1e-1)
+        # Hard-coded per-panel axis windows, set after _line_panel so they win
+        # over autoscale. Only the keys present in _panel_limits are clamped.
+        lims = _panel_limits.get(key)
+        if lims is not None:
+            (x0, x1), (y0, y1) = lims
+            ax.set_xlim(x0, x1)
+            ax.set_ylim(y0, y1)
     _draw_bottom_legend(fig, traps, labeling=labeling, top=0.97)
     return fig
 
@@ -853,9 +907,9 @@ def plot_compressibility(
             #if key == "kappa_T":
                 #ax.set_xlim(3e-4, 1e-1)
                 #ax.set_ylim(1e2, 1e6)
-            #elif key == "B_P":
-                #ax.set_xlim(9e-4, 5e-2)
-                #ax.set_ylim(2e1, 1e3)
+            if key == "B_P":
+                ax.set_xlim(9e-4, 7e-2)
+                ax.set_ylim(1e1, 1e3)
     
     #fig.suptitle(r"Isothermal compressibility & thermal expansion "
                  #r"(normalized $X_i / X_0$)", fontsize=12)
@@ -865,7 +919,7 @@ def plot_compressibility(
 
 def plot_heat_capacities(
     traps: Sequence[dict], *,
-    figsize: Optional[tuple] = (16, 9),
+    figsize: Optional[tuple] = (12, 5),
     log_x: bool = True, log_y: bool = True,
     lw: float = 1.6, reference_lines: bool = True,
     stat_legend_loc: str = "best",

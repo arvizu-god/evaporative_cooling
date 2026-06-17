@@ -191,7 +191,8 @@ def main(session_override: "Path | None" = None) -> None:
     use_regions = TEXTURES.lower() == "yes"
 
     save(plot_energies_per_particle(traps, xscale=XSCALE, yscale=YSCALE,
-                                    labeling=LABELING, grid=GRID),
+                                    labeling=LABELING, grid=GRID,
+                                    cut_mb_at_sign_change=True, cut_buffer=2),
          "fig1_energies_per_particle.png", dpi=DPI_ENERGIES)
 
     # fig2 / fig3: TEXTURES picks the region-shaded variant vs the plain one.

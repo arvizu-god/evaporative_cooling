@@ -221,10 +221,10 @@ def mb_state_functions_pure_geometry(s, N, T, alpha, V_g, kB):
 
     Omega = -NkT
     P     = NkT / V_g                                  # = -Omega / V_g
-    S     = N * kB * (s + 1) * (log_term + 1)          # Nk(s+1){ln(V/Nλ³)+1}
+    S     = N * kB * (log_term + (s + 1))          # Nk(s+1){ln(V/Nλ³)+1}
     H     = (s + 1) * NkT
-    F     = -NkT * (s + 1) * (log_term - 1)            # -NkT(s+1){ln(V/Nλ³)-1}
-    G     = NkT * log_term                             # NkT·ln(V/Nλ³) = -NkT·α
+    F     = -NkT * (log_term - 1)            # -NkT(s+1){ln(V/Nλ³)-1}
+    G     = -NkT * log_term                             # NkT·ln(V/Nλ³) = -NkT·α
     E     = s * NkT
 
     return {

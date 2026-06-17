@@ -74,8 +74,8 @@ T0 = 5.0e-5         # initial temperature
 
 Q0             = 5e-4      # initial cut-off temperature
 DQ_COARSE      = 5e-8      # coarse cut-off decrement
-N_STEPS_COARSE = 10000      # coarse steps  (publication: ~9999)
-DQ_FINE        = 5e-20     # fine-pass cut-off decrement (zoom)
+N_STEPS_COARSE = 9999      # coarse steps  (publication: ~9999)
+DQ_FINE        = 5e-25     # fine-pass cut-off decrement (zoom)
 N_STEPS_FINE   = 200       # fine steps    (publication: ~200)
 
 # Maxwell-Boltzmann reference length -- INDEPENDENT of the quantum runs.
@@ -87,13 +87,13 @@ N_STEPS_FINE   = 200       # fine steps    (publication: ~200)
 #   * DQ_MB larger: MB spans the SAME Q range with coarser sampling. Keep
 #     N_STEPS_MB * DQ_MB ~ N_STEPS_COARSE * DQ_COARSE to match the quantum
 #     coarse T-reach with fewer points.
-N_STEPS_MB = 9950          # e.g. 2000  (None -> N_STEPS_COARSE)
+N_STEPS_MB = None          # e.g. 2000  (None -> N_STEPS_COARSE)
 DQ_MB      = None          # e.g. 2.5e-7 (None -> DQ_COARSE)
 
 ZOOM = True            # two-stage BEC/Fermi zoom; False = single coarse pass
 
-ALPHA_FLOOR_COARSE = -1.05
-ALPHA_FLOOR_FINE   = -1.02
+ALPHA_FLOOR_COARSE = -1.0e-3
+ALPHA_FLOOR_FINE   = -1.0e-9
 
 DPS_COARSE = 20            # mpmath precision, coarse pass (publication: ~30)
 DPS_FINE   = 40            # mpmath precision, fine pass   (publication: ~80)
