@@ -1,0 +1,32 @@
+# Byte-compiled / caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# OS / editor junk
+.DS_Store
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Generated simulation output (regenerable; never commit)
+runs/
+old_runs/
+old_figures/
+old_notebooks/
+saved_figures/
+
+# Regenerated normalized data inside the canonical dataset
+data/paper_run/*_norm.json
+
+# Keep the committed paper figures: do NOT ignore figures/

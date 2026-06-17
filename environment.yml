@@ -1,0 +1,12 @@
+name: evap_cool
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - numpy>=1.22
+  - scipy>=1.8
+  - matplotlib>=3.5
+  - mpmath>=1.2
+  - pip
+  - pip:
+      - -e .

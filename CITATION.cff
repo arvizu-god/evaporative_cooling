@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "evap_cool: semiclassical evaporative cooling of ideal quantum gases"
+version: 0.1.0
+date-released: 2026-06-17
+authors:
+  - family-names: "Arvizu Velazquez"
+    given-names: "Arturo Alejandro"
+    affiliation: "Universidad Nacional Autónoma de México (UNAM)"
+repository-code: "https://github.com/arvizu-god/evaporative_cooling"
+license: BSD-3-Clause
+doi: 10.5281/zenodo.XXXXXXX   # fill in after Phase 5

@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evap_cool"
+version = "0.1.0"
+description = "Semiclassical evaporative cooling of ideal quantum and classical gases across five trap geometries."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Arturo Arvizu-Velázquez", email = "YOUR_EMAIL@unam.mx" },
+]
+keywords = ["evaporative-cooling", "quantum-gases", "BEC", "statistical-mechanics", "physics"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: BSD License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+  "numpy>=1.22",
+  "scipy>=1.8",
+  "matplotlib>=3.5",
+  "mpmath>=1.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/arvizu-god/evaporative_cooling"
+Repository = "https://github.com/arvizu-god/evaporative_cooling"
+
+[tool.setuptools.packages.find]
+include = ["evap_cool*"]
