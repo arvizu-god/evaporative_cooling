@@ -83,6 +83,8 @@ solver is deterministic (no random seeds).
 
 See `CITATION.cff`, or cite the archived release DOI (Zenodo) and the paper.
 
+[![DOI](https://zenodo.org/badge/399955091.svg)](https://doi.org/10.5281/zenodo.20741474)
+
 ## License
 
 BSD-3-Clause — see `LICENSE`.
