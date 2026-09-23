@@ -274,6 +274,9 @@ def run_mb_evaporation(
       - the MB kernel raises an arithmetic exception, or
       - the new temperature is non-positive / NaN.
 
+    Both MB kernels are taken from the trap (`trap.mb_particle_number`,
+    `trap.mb_temperature`), so the loop follows `trap.cut_model`.
+
     Parameters mirror `run_quantum_evaporation`.
     """
     T0 = results["T"][0]
@@ -292,7 +295,7 @@ def run_mb_evaporation(
             break
 
         try:
-            N_new = mb_particle_number(Ni, Qi, Ti)
+            N_new = trap.mb_particle_number(Ni, Qi, Ti)
             T_new = trap.mb_temperature(Qi, Ti)
 
             if not (T_new > 0):

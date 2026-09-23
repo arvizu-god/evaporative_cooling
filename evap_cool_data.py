@@ -11,6 +11,12 @@ For every trap in the roster it:
      ``<key>_mb.json`` into a fresh timestamped session under ``runs/``,
   4. post-processes each run into its ``*_thermo.json`` sibling.
 
+The truncation model is set by CUT_MODEL / RUN_BOTH in the CONFIG block. A
+momentum-cut run (the default, v0.1.0) writes an unlabeled session
+``runs/<date>/<time>/`` exactly as before; an energy-cut run writes
+``runs/<date>/<time>_energy/``; RUN_BOTH writes the sibling sessions
+``<time>_momentum/`` and ``<time>_energy/`` with one shared timestamp.
+
 It produces DATA ONLY -- no figures. The final figures (the dimensionless,
 self-normalized overlay) are stage 2: ``generate_dimensionless_plots.py``.
 ``run_pipeline.py`` chains the two and hands this session straight to stage 2.
@@ -31,6 +37,7 @@ from __future__ import annotations
 
 import sys
 import traceback
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -102,6 +109,18 @@ BACKOFF    = 5            # steps to re-seed before the fine pass
 DT_NR  = 1e-20            # Newton-Raphson step in T
 DMU_NR = 1e-30           # Newton-Raphson step in mu
 
+# Truncation model (see evap_cool.recurrences).  "momentum" reproduces v0.1.0
+# exactly; "energy" removes atoms whose TOTAL energy exceeds the cut-off.
+# The two coincide for the box.  Session folders:
+#   momentum only -> runs/<date>/<time>/          (unlabeled, as before)
+#   energy only   -> runs/<date>/<time>_energy/
+#   RUN_BOTH      -> runs/<date>/<time>_momentum/ and <time>_energy/, same
+#                    timestamp; CUT_MODEL is then ignored and the energy
+#                    session is the one handed on to stage 2.
+# Nothing here ever writes into data/paper_run/.
+CUT_MODEL = "momentum"     # "momentum" | "energy"
+RUN_BOTH  = False          # if True, run the full grid once per model
+
 # Which traps to run by default (keys). None -> the full roster below.
 # The --only CLI flag overrides this.
 ONLY = None
@@ -111,19 +130,24 @@ ONLY = None
 # Trap roster -- the single source of truth for stage 1.
 # Keys are the filename stems shared with stage 2 (generate_dimensionless_plots).
 # -----------------------------------------------------------------------------
-def build_roster() -> list[dict]:
-    """Instantiate the five-trap roster. Edit parameters here, in one place."""
+def build_roster(cut_model: str | None = None) -> list[dict]:
+    """Instantiate the five-trap roster. Edit parameters here, in one place.
+
+    `cut_model` is passed to every trap; None -> CUT_MODEL.
+    """
+    cut = CUT_MODEL if cut_model is None else cut_model
     return [
         dict(key="box",         name="Box",
-             trap=BoxTrap(V=1e-11)),
+             trap=BoxTrap(V=1e-11, cut_model=cut)),
         dict(key="box2d_osc1d", name="2D box + 1D HO",
-             trap=BoxOscTrap(omega_z=2 * np.pi * 100, Sigma=1e-8)),
+             trap=BoxOscTrap(omega_z=2 * np.pi * 100, Sigma=1e-8, cut_model=cut)),
         dict(key="osc2d_box1d", name="2D HO + 1D box",
-             trap=OscBoxTrap(omega_x=2 * np.pi * 100, omega_y=2 * np.pi * 100, L=1e-4)),
+             trap=OscBoxTrap(omega_x=2 * np.pi * 100, omega_y=2 * np.pi * 100, L=1e-4,
+                             cut_model=cut)),
         dict(key="oscillator",  name="Oscillator",
-             trap=OscillatorTrap(omega=2 * np.pi * 100)),
+             trap=OscillatorTrap(omega=2 * np.pi * 100, cut_model=cut)),
         dict(key="quadrupole",  name="Quadrupole",
-             trap=QuadrupoleTrap(A_bar=1e-15)),
+             trap=QuadrupoleTrap(A_bar=1e-15, cut_model=cut)),
     ]
 
 
@@ -218,6 +242,7 @@ def run_and_save_trap(trap, name, stem, session) -> dict:
         dQ_fine=DQ_FINE, n_steps_fine=N_STEPS_FINE,
         alpha_floor_coarse=ALPHA_FLOOR_COARSE, alpha_floor_fine=ALPHA_FLOOR_FINE,
         dps_fine=DPS_FINE, backoff=BACKOFF, zoom=ZOOM,
+        cut_model=trap.cut_model,
     )
     boson_extra   = {"zoom": zoom_b.to_metadata()} if zoom_b is not None else None
     fermion_extra = {"zoom": zoom_f.to_metadata()} if zoom_f is not None else None
@@ -242,9 +267,9 @@ def post_process_trap(trap, stem, session) -> None:
 
 
 # =============================================================================
-def _select_roster(only) -> list[dict]:
+def _select_roster(only, cut_model: str | None = None) -> list[dict]:
     """Filter the roster by a set/list of keys (None -> everything)."""
-    roster = build_roster()
+    roster = build_roster(cut_model)
     if not only:
         return roster
     wanted = {k.strip() for k in only} if not isinstance(only, str) else \
@@ -259,17 +284,29 @@ def _select_roster(only) -> list[dict]:
     return chosen
 
 
-def main(only=None) -> Path:
-    """Generate runs + thermo for the selected traps. Returns the session path."""
-    roster = _select_roster(only if only is not None else ONLY)
+def _cut_models() -> list[str]:
+    """Cut models to run, in order: both under RUN_BOTH, else just CUT_MODEL."""
+    models = ["momentum", "energy"] if RUN_BOTH else [CUT_MODEL]
+    for m in models:
+        if m not in ("momentum", "energy"):
+            raise SystemExit(f"CUT_MODEL must be 'momentum' or 'energy', got {m!r}.")
+    return models
 
-    session = make_session_dir(base=str(RUNS_DIR))
-    print(f"Session folder : {session}")
-    print(f"Traps to run   : {', '.join(t['key'] for t in roster)}")
-    print(f"Zoom           : {ZOOM}   (coarse steps={N_STEPS_COARSE}, "
-          f"dps {DPS_COARSE}/{DPS_FINE})")
 
-    # Continue past a failing trap; collect outcomes for the end-of-run summary.
+def _session_label(cut_model: str) -> str | None:
+    """Session-folder label: none for a momentum-only run (as in v0.1.0),
+    otherwise the model name (<time>_energy/, or <time>_momentum/ under RUN_BOTH)."""
+    if cut_model == "momentum" and not RUN_BOTH:
+        return None
+    return cut_model
+
+
+def _run_pass(roster, session) -> list[tuple[str, str, str]]:
+    """Run and post-process every trap of `roster` into `session`.
+
+    Continues past a failing trap; returns (key, status, detail) per trap
+    for the end-of-run summary.
+    """
     summary: list[tuple[str, str, str]] = []   # (key, status, detail)
     for t in roster:
         key, name, trap = t["key"], t["name"], t["trap"]
@@ -291,10 +328,13 @@ def main(only=None) -> Path:
                         f"bosons={counts['bosons']} fermions={counts['fermions']} "
                         f"mb={counts['mb']}"))
         print(f"  thermo    -> {key}_*_thermo.json written")
+    return summary
 
-    # ---- End-of-run summary -------------------------------------------------
+
+def _print_summary(session, summary, cut_model: str) -> int:
+    """Print the end-of-run block for one session; return the count of completed traps."""
     print("\n" + "=" * 68)
-    print(f"SUMMARY  ({session})")
+    print(f"SUMMARY  [{cut_model} cut]  ({session})")
     print("=" * 68)
     ok = sum(1 for _, st, _ in summary if st == "ok")
     for key, status, detail in summary:
@@ -305,10 +345,45 @@ def main(only=None) -> Path:
     # Show what landed on disk.
     thermo = [p.name for p in list_runs(session) if p.stem.endswith("_thermo")]
     print(f"{len(thermo)} thermo file(s) in session.")
+    return ok
 
-    if ok == 0:
+
+def main(only=None) -> Path:
+    """Generate runs + thermo for the selected traps. Returns the session path.
+
+    One pass per cut model (see CUT_MODEL / RUN_BOTH), each into its own
+    session.  Under RUN_BOTH the energy session is returned.
+    """
+    models = _cut_models()
+    rosters = {m: _select_roster(only if only is not None else ONLY, m) for m in models}
+    started = datetime.now()                  # shared by sibling sessions under RUN_BOTH
+
+    passes: list[tuple[str, Path, list]] = []  # (cut_model, session, summary)
+    for cut_model in models:
+        roster = rosters[cut_model]
+        session = make_session_dir(base=str(RUNS_DIR), when=started,
+                                   label=_session_label(cut_model))
+        print(f"Session folder : {session}")
+        print(f"Cut model      : {cut_model}")
+        print(f"Traps to run   : {', '.join(t['key'] for t in roster)}")
+        print(f"Zoom           : {ZOOM}   (coarse steps={N_STEPS_COARSE}, "
+              f"dps {DPS_COARSE}/{DPS_FINE})")
+        passes.append((cut_model, session, _run_pass(roster, session)))
+
+    # ---- End-of-run summary, one block per pass -----------------------------
+    ok_by_model = {m: _print_summary(session, summary, m) for m, session, summary in passes}
+
+    returned_model = "energy" if RUN_BOTH else models[0]
+    returned = next(session for m, session, _ in passes if m == returned_model)
+    if RUN_BOTH:
+        print("\nRUN_BOTH sessions:")
+        for m, session, _ in passes:
+            tag = "   <- returned for stage 2" if m == returned_model else ""
+            print(f"  {m:<8} ({ok_by_model[m]} ok) : {session}{tag}")
+
+    if ok_by_model[returned_model] == 0:
         raise SystemExit("No trap completed end-to-end; nothing for stage 2 to plot.")
-    return session
+    return returned
 
 
 def _parse_args():

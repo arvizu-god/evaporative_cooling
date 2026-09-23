@@ -32,6 +32,12 @@ precision used in the polylog inner loop, but the saved time series is
 for plotting and downstream analysis, not for resuming computation;
 callers who need bit-exact reproducibility should rerun from `parameters`.
 
+The truncation model of a run ("momentum" or "energy") is recorded twice:
+in `metadata.trap.cut_model` (from `Trap.describe()`) and, for runs written
+by stage 1, in `parameters.cut_model`.  Runs saved before the cut-model
+switch carry neither; `run_cut_model` reads them as "momentum", the only
+truncation v0.1.0 had.
+
 This module knows nothing about traps directly: it consumes whatever
 `Trap.describe()` returns. That keeps storage decoupled from the
 trap-class hierarchy — adding a new trap type doesn't require touching
@@ -337,6 +343,30 @@ def load_run(path: Union[str, Path]) -> dict:
         )
 
     return payload
+
+
+def run_cut_model(payload: dict) -> str:
+    """Return the truncation model a saved run was produced with.
+
+    Looks at `parameters["cut_model"]` first, then at
+    `metadata["trap"]["cut_model"]` (from `Trap.describe()`).  Runs saved
+    before the cut-model switch carry neither and are read as "momentum".
+
+    Parameters
+    ----------
+    payload : dict
+        A payload as returned by `load_run`.
+
+    Returns
+    -------
+    str
+        "momentum" or "energy".
+    """
+    model = (payload.get("parameters") or {}).get("cut_model")
+    if model is None:
+        trap_meta = (payload.get("metadata") or {}).get("trap") or {}
+        model = trap_meta.get("cut_model")
+    return "momentum" if model is None else model
 
 
 # ---------------------------------------------------------------------------
