@@ -39,7 +39,7 @@ Quick start
 Package layout
 --------------
     constants        Physical constants (SI, eV unit systems)
-    polylog          Modified polylogarithms g_tilde, g_bar, g_full
+    polylog          Modified polylogarithms g_tilde, g_bar, g_full, g_inc
     solvers          Newton-Raphson root finders
     recurrences      Term-list representation of evaporation recurrences
     thermodynamics   Trap classes, Maxwell-Boltzmann kernel, equilibrium
@@ -62,7 +62,7 @@ from .constants import ConstantsSI, ConstantsEV
 # ---------------------------------------------------------------------------
 # Mathematical primitives
 # ---------------------------------------------------------------------------
-from .polylog import g_tilde, g_bar, g_full
+from .polylog import g_tilde, g_bar, g_full, g_inc
 from .solvers import (
     newton_raphson_1var,
     newton_raphson_2var_fused,
@@ -76,6 +76,7 @@ from .recurrences import (
     PolylogTerm,
     Recurrence,
     pure_geometry_recurrences,
+    energy_cut_recurrences,
     evaluate_recurrence,
     evaluate_fused,
 )
@@ -190,14 +191,14 @@ __all__ = [
     # Constants
     "ConstantsSI", "ConstantsEV",
     # Polylogs
-    "g_tilde", "g_bar", "g_full",
+    "g_tilde", "g_bar", "g_full", "g_inc",
     # Solvers
     "newton_raphson_1var",
     "newton_raphson_2var_fused",
     "newton_raphson_2var_fused_real",
     # Recurrences
     "PolylogTerm", "Recurrence",
-    "pure_geometry_recurrences",
+    "pure_geometry_recurrences", "energy_cut_recurrences",
     "evaluate_recurrence", "evaluate_fused",
     # Traps
     "Trap", "BoxTrap", "QuadrupoleTrap", "OscillatorTrap",
