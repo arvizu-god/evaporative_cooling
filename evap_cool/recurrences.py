@@ -1,4 +1,26 @@
-from .polylog import g_tilde, g_bar, g_full
+"""
+Term-list representation of the evaporation recurrences.
+
+Each truncation step multiplies (N, E, Omega) by ratios X_1/X_0 of the form
+(sum of PolylogTerms) / g_full(order, alpha).  Two truncation models are
+provided:
+
+  - pure_geometry_recurrences(s): the momentum cut of v0.1.0 (paper eq. 27).
+    States with p^2/2m > eps_c are removed at every position r, regardless
+    of the trapping potential U(r).
+  - energy_cut_recurrences(s): the energy cut.  An atom escapes iff its
+    total energy p^2/2m + U(r) exceeds eps_c; with g(eps) ~ eps^(s-1) this
+    reduces to the lower incomplete Bose/Fermi integral g_inc.
+
+The two coincide identically at s = 3/2, for every alpha, eta and both
+statistics: in the box U = 0 on the support of the cloud, so kinetic and
+total energy are the same thing and cutting p^2/2m > eps_c is cutting
+eps > eps_c.  For s != 3/2 they differ at order one.  In the classical
+limit the momentum cut gives N_1/N_0 = P(3/2, eta) for every trap, whereas
+the energy cut gives P(s, eta).
+"""
+
+from .polylog import g_tilde, g_bar, g_full, g_inc
 from dataclasses import dataclass, field
 from typing import Callable, Literal, Any
 import mpmath as mp
@@ -10,9 +32,10 @@ class PolylogTerm:
 
     Represents a quantity of the form
         sign * eta_coeff(eta_c) * G(order, alpha, eta_c, statistics_sign)
-    where G is g_tilde if kind == "tilde" or g_bar if kind == "bar".
+    where G is g_tilde if kind == "tilde", g_bar if kind == "bar", or
+    g_inc if kind == "inc".
     """
-    kind: Literal["tilde", "bar"]
+    kind: Literal["tilde", "bar", "inc"]
     order: float                              # polylog order s (can be half-integer)
     eta_coeff: Callable[[Any], Any]     # function of eta_c, returns mpf
     sign: int = +1                            # +1 or -1, the term's sign in the sum
@@ -58,6 +81,8 @@ def evaluate_recurrence(
             poly_value = g_tilde(term.order, alpha, eta_c, statistics_sign)
         elif term.kind == "bar":
             poly_value = g_bar(term.order, alpha, eta_c, statistics_sign)
+        elif term.kind == "inc":
+            poly_value = g_inc(term.order, alpha, eta_c, statistics_sign)
         else:
             raise ValueError(f"Unknown polylog kind: {term.kind!r}")
         numerator += term.sign * term.eta_coeff(eta_c) * poly_value
@@ -123,6 +148,67 @@ def pure_geometry_recurrences(s: float) -> dict[str, Recurrence]:
     return {"N": rec_N, "E": rec_E, "Omega": rec_Omega}
 
 
+def energy_cut_recurrences(s: float) -> dict[str, Recurrence]:
+    """Build N, E, Omega recurrences for the energy-cut truncation.
+
+    An atom escapes iff its total energy exceeds the cut-off.  For a density
+    of states g(eps) ~ eps^(s-1) every trap, pure or mixed, then shares the
+    same form in terms of the lower incomplete Bose/Fermi integral g_inc:
+        N/N0         = g_inc(s,   alpha, eta) / g_s
+        E/E0         = g_inc(s+1, alpha, eta) / g_{s+1}
+        Omega/Omega0 = [ g_inc(s+1, alpha, eta)
+                         + eta^s / Gamma(s+1) * g_bar(1, alpha, eta) ] / g_{s+1}
+
+    The Omega boundary term comes from integrating the truncated grand
+    potential  int_0^eta t^(s-1) (-/+ ln(1 -/+ e^(alpha - t))) dt / Gamma(s)
+    by parts.  The truncated Omega is diagnostic only: the rethermalization
+    Newton-Raphson uses N and E alone.
+
+    At s = 3/2 this reproduces pure_geometry_recurrences(1.5) identically
+    (see the module docstring).
+
+    Parameters
+    ----------
+    s : float
+        Trap exponent. Density of states g(eps) ~ eps^(s-1).
+
+    Returns
+    -------
+    dict
+        {"N": Recurrence, "E": Recurrence, "Omega": Recurrence}
+    """
+    one = lambda eta: mp.mpf(1)
+
+    # Gamma(s+1) is evaluated at call time rather than captured here, so the
+    # coefficient follows the working precision of the run, not the
+    # precision at which the trap was constructed.
+    omega_boundary = lambda eta: eta**s / mp.gamma(s + 1)       # η^s / Γ(s+1)
+
+    rec_N = Recurrence(
+        numerator_terms=(
+            PolylogTerm(kind="inc", order=s,       eta_coeff=one,            sign=+1),
+        ),
+        denominator_order=s,
+    )
+
+    rec_E = Recurrence(
+        numerator_terms=(
+            PolylogTerm(kind="inc", order=s + 1,   eta_coeff=one,            sign=+1),
+        ),
+        denominator_order=s + 1,
+    )
+
+    rec_Omega = Recurrence(
+        numerator_terms=(
+            PolylogTerm(kind="inc", order=s + 1,   eta_coeff=one,            sign=+1),
+            PolylogTerm(kind="bar", order=1.0,     eta_coeff=omega_boundary, sign=+1),
+        ),
+        denominator_order=s + 1,
+    )
+
+    return {"N": rec_N, "E": rec_E, "Omega": rec_Omega}
+
+
 def evaluate_fused(
     recurrences: dict[str, Recurrence],
     alpha: Any,
@@ -135,6 +221,8 @@ def evaluate_fused(
     computes each unique (kind, order) pair only once. For pure-geometry
     traps, this saves one g_bar(s-1/2, ...) call per step (shared between
     N and E) and one g_full(s+1, ...) call (shared between E and Omega).
+    For the energy cut, g_inc(s+1, ...) and g_full(s+1, ...) are both shared
+    between E and Omega.
 
     Parameters
     ----------
@@ -164,6 +252,8 @@ def evaluate_fused(
                 cache[key] = g_tilde(order, alpha, eta_c, statistics_sign)
             elif kind == "bar":
                 cache[key] = g_bar(order, alpha, eta_c, statistics_sign)
+            elif kind == "inc":
+                cache[key] = g_inc(order, alpha, eta_c, statistics_sign)
             elif kind == "full":
                 cache[key] = g_full(order, alpha, statistics_sign)
             else:
