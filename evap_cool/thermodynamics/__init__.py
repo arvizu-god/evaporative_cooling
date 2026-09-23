@@ -18,6 +18,9 @@ mb_temperature
     Universal MB temperature kernel parameterized by the density-of-states
     exponent `s`. Trap classes use this internally; exposed for callers
     that want to apply the classical limit without instantiating a trap.
+mb_particle_number_energy_cut, mb_temperature_energy_cut
+    Energy-cut counterparts of the two kernels above; both depend on `s`.
+    Trap classes dispatch to them when their cut model is "energy".
 
 Typical usage
 -------------
@@ -34,6 +37,7 @@ from .quadrupole import QuadrupoleTrap
 from .oscillator import OscillatorTrap
 from .mixed import OscBoxTrap, BoxOscTrap          # <-- add
 from .maxwell_boltzmann import mb_particle_number, mb_temperature, mb_state_functions_pure_geometry, mb_thermal_coefficients_pure_geometry
+from .maxwell_boltzmann import mb_particle_number_energy_cut, mb_temperature_energy_cut
 
 __all__ = [
     "Trap",
@@ -43,4 +47,6 @@ __all__ = [
     "OscBoxTrap", "BoxOscTrap",                     # <-- add
     "mb_particle_number",
     "mb_temperature",
+    "mb_particle_number_energy_cut",
+    "mb_temperature_energy_cut",
 ]

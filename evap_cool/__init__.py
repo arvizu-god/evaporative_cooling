@@ -92,6 +92,8 @@ from .thermodynamics import (
     OscBoxTrap, BoxOscTrap,   
     mb_particle_number,
     mb_temperature,
+    mb_particle_number_energy_cut,
+    mb_temperature_energy_cut,
     mb_state_functions_pure_geometry,
     mb_thermal_coefficients_pure_geometry,
 )
@@ -204,6 +206,7 @@ __all__ = [
     "Trap", "BoxTrap", "QuadrupoleTrap", "OscillatorTrap",
     "OscBoxTrap", "BoxOscTrap", 
     "mb_particle_number", "mb_temperature",
+    "mb_particle_number_energy_cut", "mb_temperature_energy_cut",
     "mb_state_functions_pure_geometry",
     "mb_thermal_coefficients_pure_geometry",
     # Evaporation
