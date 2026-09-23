@@ -9,7 +9,9 @@ Equilibrium:
 
 The truncation-step recurrences are inherited from the Trap base class
 via `truncated_NEO`, which consumes the specs produced by
-`pure_geometry_recurrences(3.0)` in __init__.
+`pure_geometry_recurrences(3.0)` in __init__ (cut_model="momentum", the
+default) or `energy_cut_recurrences(3.0)`, built lazily on first use
+(cut_model="energy").
 
 Note on the recurrences:
     `pure_geometry_recurrences(3.0)` returns the corrected formula with
@@ -41,12 +43,14 @@ class OscillatorTrap(Trap):
         m: float = ConstantsEV.m_Na23,
         hbar: float = ConstantsEV.hbar,
         kB: float = ConstantsEV.kB,
+        cut_model: str = "momentum",
     ):
         super().__init__(
             name="oscillator",
             s=3.0,
             recurrences=pure_geometry_recurrences(3.0),
             kB=kB,
+            cut_model=cut_model,
         )
         self.omega = omega
         self.hbar = hbar

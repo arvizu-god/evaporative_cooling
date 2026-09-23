@@ -50,10 +50,12 @@ Implementation map
     C_V, C_P, kappa_T, B_P        → `Trap.equilibrium_thermal_coefficients`
                                     → `equilibrium_thermal_coefficients_pure_geometry(s=1.5, V_g=V)`
     Global volume V_g             → `BoxTrap.volume_global = V`
-    Truncation-step recurrences   → `pure_geometry_recurrences(1.5)`
-                                    consumed by `Trap.truncated_NEO`
+    Truncation-step recurrences   → `pure_geometry_recurrences(1.5)`  (cut_model="momentum", default)
+                                    or `energy_cut_recurrences(1.5)`  (cut_model="energy"),
+                                    consumed by `Trap.truncated_NEO`; identical at s = 3/2
     MB-limit post-cut temperature → `Trap.mb_temperature`
                                     via `maxwell_boltzmann.mb_temperature(s=1.5, ...)`
+                                    or `mb_temperature_energy_cut` (cut_model="energy")
 
 This file therefore contains only:
   - the trap-specific equations of state  N(T, mu), E(T, mu),
@@ -83,12 +85,14 @@ class BoxTrap(Trap):
         m: float = ConstantsSI.m_Na23,
         h: float = ConstantsSI.h,
         kB: float = ConstantsSI.kB,
+        cut_model: str = "momentum",
     ):
         super().__init__(
             name="box",
             s=1.5,
             recurrences=pure_geometry_recurrences(1.5),
             kB=kB,
+            cut_model=cut_model,
         )
         self.V = V
         self.h = h

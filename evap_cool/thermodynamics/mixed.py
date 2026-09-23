@@ -32,6 +32,9 @@ surface area Sigma). Both prefactors are dimensionless in SI.
 Everything else is inherited from the generic kernels
 -----------------------------------------------------
     Truncation step  (N1, E1, Omega1)  -> pure_geometry_recurrences(nu)
+                                          (cut_model="momentum", default)
+                                          or energy_cut_recurrences(nu)
+                                          (cut_model="energy"),
                                           consumed by Trap.truncated_NEO
     Omega, S, P, H, F, G               -> Trap.equilibrium_state_functions
                                           (pure-geometry kernel, exponent nu)
@@ -99,12 +102,14 @@ class OscBoxTrap(Trap):
         m: float = ConstantsSI.m_Na23,
         h: float = ConstantsSI.h,
         kB: float = ConstantsSI.kB,
+        cut_model: str = "momentum",
     ):
         super().__init__(
             name="osc2d_box1d",
             s=2.5,
             recurrences=pure_geometry_recurrences(2.5),
             kB=kB,
+            cut_model=cut_model,
         )
         self.omega_x = omega_x
         self.omega_y = omega_y
@@ -215,12 +220,14 @@ class BoxOscTrap(Trap):
         m: float = ConstantsSI.m_Na23,
         h: float = ConstantsSI.h,
         kB: float = ConstantsSI.kB,
+        cut_model: str = "momentum",
     ):
         super().__init__(
             name="box2d_osc1d",
             s=2.0,
             recurrences=pure_geometry_recurrences(2.0),
             kB=kB,
+            cut_model=cut_model,
         )
         self.omega_z = omega_z
         self.Sigma = Sigma

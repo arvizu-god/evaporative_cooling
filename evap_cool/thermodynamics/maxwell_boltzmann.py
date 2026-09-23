@@ -7,6 +7,24 @@ Evaporation kernels (used by the MB loop)
   - `mb_temperature`     : shared kernel parameterized by the density-of-
     states exponent `s`. Trap classes invoke this from their own
     `mb_temperature` method.
+  - `mb_particle_number_energy_cut`, `mb_temperature_energy_cut` : the
+    same two kernels for the energy cut; both depend on `s`.  Trap
+    classes dispatch to them when their cut model is "energy".
+
+Momentum cut vs energy cut
+--------------------------
+With η = Q/T and P(s, x) = γ(s, x)/Γ(s) the regularized lower incomplete
+gamma function:
+
+  - momentum cut (v0.1.0):
+        N1/N0 = erf(√η) − (2/√π) √η e^{−η} = P(3/2, η)
+    for EVERY trap.  The particle loss is independent of s; the geometry
+    enters only through the energy ratio.  That is the classical-limit
+    signature of the momentum cut.
+  - energy cut:
+        N1/N0 = P(s, η),    T1/T0 = P(s+1, η) / P(s, η)
+    Both depend on s.
+  - The two are identical at s = 3/2 (the box).
 
 Equilibrium kernels (used by post-processing)
 ---------------------------------------------
@@ -160,6 +178,87 @@ def mb_temperature(s, Q, T):
     num = erf_term - c1 * sqrt_eta * exp_term - c2 * eta ** mp.mpf("1.5") * exp_term
     den = erf_term - c1 * sqrt_eta * exp_term
     return float(T * num / den)
+
+
+def mb_particle_number_energy_cut(N0, Q, T, s):
+    """Remaining particle number after an energy cut at Q (classical MB).
+
+    An atom escapes iff its total energy exceeds the cut-off.  With density
+    of states  g(eps) ~ eps^(s-1)  and  eta = Q/T:
+
+        N_1 / N_0 = P(s, eta)
+
+    with P the regularized lower incomplete gamma function.  At s = 3/2 this
+    coincides with `mb_particle_number` (momentum cut).
+
+    Parameters
+    ----------
+    N0 : float
+        Particle number before the cut.
+    Q : float
+        Cut-off temperature [same units as T].
+    T : float
+        Sample temperature.
+    s : float
+        Density-of-states exponent. 1.5 = box, 2 = box2d_osc1d,
+        2.5 = osc2d_box1d, 3 = oscillator, 4.5 = quadrupole.
+
+    Returns
+    -------
+    float
+        Particle number after the cut.
+    """
+    if not (Q > 0):
+        raise ValueError(
+            f"mb_particle_number_energy_cut requires Q > 0, got Q = {Q!r}. "
+            f"The classical MB cut is only defined for a positive cut-off "
+            f"temperature; consider clipping the cut-off schedule before this point."
+        )
+    if not (T > 0):
+        raise ValueError(f"mb_particle_number_energy_cut requires T > 0, got T = {T!r}.")
+
+    eta = Q / T
+    return float(N0 * mp.gammainc(s, 0, eta, regularized=True))
+
+
+def mb_temperature_energy_cut(s, Q, T):
+    """Post-cut MB temperature after an energy cut, for any trap with exponent `s`.
+
+    In the classical limit  E = s N kB T,  so  T_1/T_0 = (E_1/E_0) / (N_1/N_0)
+    with  E_1/E_0 = P(s+1, eta)  and  N_1/N_0 = P(s, eta):
+
+        T_1 / T_0 = P(s+1, eta) / P(s, eta),    eta = Q/T
+
+    At s = 3/2 this coincides with `mb_temperature` (momentum cut).
+
+    Parameters
+    ----------
+    s : float
+        Density-of-states exponent. 1.5 = box, 2 = box2d_osc1d,
+        2.5 = osc2d_box1d, 3 = oscillator, 4.5 = quadrupole.
+    Q : float
+        Cut-off temperature.
+    T : float
+        Sample temperature.
+
+    Returns
+    -------
+    float
+        New sample temperature after the cut.
+    """
+    if not (Q > 0):
+        raise ValueError(
+            f"mb_temperature_energy_cut requires Q > 0, got Q = {Q!r}. "
+            f"The classical MB cut is only defined for a positive cut-off "
+            f"temperature; consider clipping the cut-off schedule before this point."
+        )
+    if not (T > 0):
+        raise ValueError(f"mb_temperature_energy_cut requires T > 0, got T = {T!r}.")
+
+    eta = Q / T
+    P_s  = mp.gammainc(s,     0, eta, regularized=True)
+    P_s1 = mp.gammainc(s + 1, 0, eta, regularized=True)
+    return float(T * P_s1 / P_s)
 
 # ---------------------------------------------------------------------------
 # Equilibrium thermodynamics — Maxwell-Boltzmann limit

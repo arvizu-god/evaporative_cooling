@@ -12,10 +12,14 @@ Subclasses are expected to:
   - set `name` (human-readable identifier, used by storage and plots),
   - implement `equilibrium_N(T, mu, sign)` and `equilibrium_E(T, mu, sign)`,
   - implement `fused_jacobian(T, mu, N_target, E_target, sign)`,
-  - implement `mb_temperature(Q, T)`.
+  - implement `mb_temperature(Q, T)`,
+  - accept a `cut_model` keyword and forward it to `Trap.__init__`.
 
 The truncated-step recurrence machinery (truncated_NEO) lives on the
-base class; it is generic across all pure geometries.
+base class; it is generic across all pure geometries.  `cut_model`
+selects the truncation: "momentum" (v0.1.0 default, the subclass's
+`recurrences`) or "energy" (`energy_cut_recurrences(s)`, built lazily on
+first use, so momentum-cut runs never construct it).
 """
 
 from __future__ import annotations
@@ -26,10 +30,13 @@ from typing import Any
 
 import mpmath as mp
 
-from evap_cool.recurrences import Recurrence, evaluate_fused
+from evap_cool.recurrences import Recurrence, evaluate_fused, energy_cut_recurrences
 from evap_cool.solvers import newton_raphson_1var
 from .maxwell_boltzmann import (
+    mb_particle_number as _mb_particle_number_kernel,
+    mb_particle_number_energy_cut as _mb_particle_number_energy_cut_kernel,
     mb_temperature as _mb_temperature_kernel,
+    mb_temperature_energy_cut as _mb_temperature_energy_cut_kernel,
     mb_state_functions_pure_geometry,
     mb_thermal_coefficients_pure_geometry,
 )
@@ -37,6 +44,9 @@ from .equilibrium import (
     equilibrium_state_functions_pure_geometry,
     equilibrium_thermal_coefficients_pure_geometry,
 )
+
+# Truncation models accepted by Trap.cut_model.
+_CUT_MODELS = ("momentum", "energy")
 
 @dataclass
 class Trap(ABC):
@@ -54,11 +64,43 @@ class Trap(ABC):
         Boltzmann constant in the unit system used by this Trap instance.
         Bound at construction so the same Trap class can be used in SI
         or eV unit systems without global state.
+    cut_model : str
+        Truncation model, "momentum" (default, v0.1.0: `recurrences`) or
+        "energy" (`energy_cut_recurrences(s)`).  Used by `truncated_NEO`,
+        `mb_particle_number` and `mb_temperature` unless overridden per call.
     """
     name: str
     s: float
     recurrences: dict[str, Recurrence]
     kB: float
+    cut_model: str = "momentum"
+
+    def __post_init__(self):
+        self._resolve_cut_model(None)
+
+    # ------------------------------------------------------------------
+    # Cut-model selection
+    # ------------------------------------------------------------------
+    def _resolve_cut_model(self, cut_model: str | None) -> str:
+        """Return the effective cut model: `cut_model`, or self.cut_model if None."""
+        effective = self.cut_model if cut_model is None else cut_model
+        if effective not in _CUT_MODELS:
+            raise ValueError(
+                f"cut_model must be 'momentum' or 'energy', got {effective!r}."
+            )
+        return effective
+
+    def _recurrences_for(self, cut_model: str) -> dict[str, Recurrence]:
+        """Recurrence specs for a resolved cut model.
+
+        The energy-cut specs are built on first use and cached on the
+        instance, so nothing changes for momentum-cut runs.
+        """
+        if cut_model == "momentum":
+            return self.recurrences
+        if self.__dict__.get("_energy_cut_recurrences") is None:
+            self._energy_cut_recurrences = energy_cut_recurrences(self.s)
+        return self._energy_cut_recurrences
 
     # ------------------------------------------------------------------
     # Truncation step (generic across all pure geometries)
@@ -72,6 +114,7 @@ class Trap(ABC):
         Omega: float,
         Q: float,
         sign: int,
+        cut_model: str | None = None,
     ) -> tuple[Any, Any, Any]:
         """Apply one evaporation cut: return new (N, E, Omega) before rethermalization.
 
@@ -87,6 +130,9 @@ class Trap(ABC):
             Cut-off temperature for this step (same units as T).
         sign : int
             +1 for bosons, -1 for fermions.
+        cut_model : {"momentum", "energy"} or None
+            Truncation model for this call.  None (default) uses
+            `self.cut_model`.
 
         Returns
         -------
@@ -96,7 +142,8 @@ class Trap(ABC):
         alpha = mp.mpf(mu) / (self.kB * mp.mpf(T))
         eta_c = mp.mpf(Q) / mp.mpf(T)
 
-        ratios = evaluate_fused(self.recurrences, alpha, eta_c, sign)
+        recurrences = self._recurrences_for(self._resolve_cut_model(cut_model))
+        ratios = evaluate_fused(recurrences, alpha, eta_c, sign)
         return (ratios["N"] * N, ratios["E"] * E, ratios["Omega"] * Omega)
 
     # ------------------------------------------------------------------
@@ -206,9 +253,24 @@ class Trap(ABC):
     # ------------------------------------------------------------------
     # Maxwell-Boltzmann (classical) limit — trap-specific via d/2 factor
     # ------------------------------------------------------------------
-    def mb_temperature(self, Q, T):
+    def mb_particle_number(self, N, Q, T, cut_model=None):
+        """MB-limit post-cut particle number.
+
+        Momentum cut: the trap-independent kernel, N1/N0 = P(3/2, Q/T).
+        Energy cut: N1/N0 = P(s, Q/T).  `cut_model` None uses self.cut_model.
+        """
+        if self._resolve_cut_model(cut_model) == "energy":
+            return _mb_particle_number_energy_cut_kernel(N, Q, T, s=self.s)
+        return _mb_particle_number_kernel(N, Q, T)
+
+    def mb_temperature(self, Q, T, cut_model=None):
         """MB-limit post-cut temperature. Default implementation handles all
-        pure-geometry traps; mixed traps may override."""
+        pure-geometry traps; mixed traps may override.
+
+        Dispatches on the cut model like `mb_particle_number`.
+        """
+        if self._resolve_cut_model(cut_model) == "energy":
+            return _mb_temperature_energy_cut_kernel(self.s, Q, T)
         return _mb_temperature_kernel(self.s, Q, T)
 
     # ------------------------------------------------------------------
@@ -313,4 +375,5 @@ class Trap(ABC):
             "s": float(self.s),
             "kB": float(self.kB),
             "trap_class": type(self).__name__,
+            "cut_model": self.cut_model,
         }

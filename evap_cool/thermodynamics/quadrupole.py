@@ -9,7 +9,9 @@ Equilibrium:
 
 The truncation-step recurrences are inherited from the Trap base class
 via `truncated_NEO`, which consumes the specs produced by
-`pure_geometry_recurrences(4.5)` in __init__.
+`pure_geometry_recurrences(4.5)` in __init__ (cut_model="momentum", the
+default) or `energy_cut_recurrences(4.5)`, built lazily on first use
+(cut_model="energy").
 """
 
 from dataclasses import dataclass
@@ -34,12 +36,14 @@ class QuadrupoleTrap(Trap):
         m: float = ConstantsEV.m_Na23,
         h: float = ConstantsEV.h,
         kB: float = ConstantsEV.kB,
+        cut_model: str = "momentum",
     ):
         super().__init__(
             name="quadrupole",
             s=4.5,
             recurrences=pure_geometry_recurrences(4.5),
             kB=kB,
+            cut_model=cut_model,
         )
         self.A_bar = A_bar
         self.h = h
